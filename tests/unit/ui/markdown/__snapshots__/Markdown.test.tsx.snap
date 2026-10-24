@@ -1,0 +1,359 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Markdown renderer — snapshots (80 columns) > blockquote.md with color 1`] = `
+"│ Uma citação simples.
+│
+│ Com ênfase dentro.
+
+│ Nível um
+│
+│ │ Nível dois"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > blockquote.md without color 1`] = `
+"│ Uma citação simples.
+│
+│ Com ênfase dentro.
+
+│ Nível um
+│
+│ │ Nível dois"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > code-ts.md with color 1`] = `
+"Exemplo em TypeScript:
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ typescript                                                                   │
+│ import { readFile } from "node:fs/promises";                                 │
+│                                                                              │
+│ // lê um arquivo                                                             │
+│ export async function load(path: string): Promise<number> {                  │
+│   const text = await readFile(path, "utf8");                                 │
+│   return text.length * 2;                                                    │
+│ }                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Fim."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > code-ts.md without color 1`] = `
+"Exemplo em TypeScript:
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ typescript                                                                   │
+│ import { readFile } from "node:fs/promises";                                 │
+│                                                                              │
+│ // lê um arquivo                                                             │
+│ export async function load(path: string): Promise<number> {                  │
+│   const text = await readFile(path, "utf8");                                 │
+│   return text.length * 2;                                                    │
+│ }                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+Fim."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > code-unclosed.md with color 1`] = `
+"Começo do texto.
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ python                                                                       │
+│ def hello(name):                                                             │
+│     print(f"hello {name}")                                                   │
+│                                                                              │
+│ hello("world")                                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > code-unclosed.md without color 1`] = `
+"Começo do texto.
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ python                                                                       │
+│ def hello(name):                                                             │
+│     print(f"hello {name}")                                                   │
+│                                                                              │
+│ hello("world")                                                               │
+╰──────────────────────────────────────────────────────────────────────────────╯"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > code-unknown.md with color 1`] = `
+"╭──────────────────────────────────────────────────────────────────────────────╮
+│ brainfuck                                                                    │
+│ ++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ text                                                                         │
+│ sem linguagem                                                                │
+╰──────────────────────────────────────────────────────────────────────────────╯"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > code-unknown.md without color 1`] = `
+"╭──────────────────────────────────────────────────────────────────────────────╮
+│ brainfuck                                                                    │
+│ ++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.                         │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ text                                                                         │
+│ sem linguagem                                                                │
+╰──────────────────────────────────────────────────────────────────────────────╯"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > headings.md with color 1`] = `
+"Título principal
+════════════════
+
+Parágrafo introdutório.
+
+Seção dois
+
+### Subseção três
+
+#### Nível quatro
+
+Texto final."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > headings.md without color 1`] = `
+"Título principal
+════════════════
+
+Parágrafo introdutório.
+
+Seção dois
+
+### Subseção três
+
+#### Nível quatro
+
+Texto final."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > inline.md with color 1`] = `
+"Texto com negrito, itálico, tachado e código inline.
+
+Um link para docs (https://example.com/docs) e uma URL igual ao texto
+https://example.com.
+
+Quebra de linha
+forçada aqui."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > inline.md without color 1`] = `
+"Texto com negrito, itálico, tachado e \`código inline\`.
+
+Um link para docs (https://example.com/docs) e uma URL igual ao texto
+https://example.com.
+
+Quebra de linha
+forçada aqui."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > lists.md with color 1`] = `
+"• item um
+• item dois
+  ◦ subitem a
+  ◦ subitem b
+    ▪ terceiro nível
+• item três
+
+1. primeiro
+2. segundo
+3. terceiro
+
+5. começa em cinco
+6. seis
+
+☐ tarefa aberta
+☑ tarefa feita"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > lists.md without color 1`] = `
+"• item um
+• item dois
+  ◦ subitem a
+  ◦ subitem b
+    ▪ terceiro nível
+• item três
+
+1. primeiro
+2. segundo
+3. terceiro
+
+5. começa em cinco
+6. seis
+
+[ ] tarefa aberta
+[x] tarefa feita"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-bold.md with color 1`] = `
+"Negrito **aberto e nunca fechado neste parágrafo.
+Outra linha com *itálico aberto."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-bold.md without color 1`] = `
+"Negrito **aberto e nunca fechado neste parágrafo.
+Outra linha com *itálico aberto."
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-fence.md with color 1`] = `
+"\`\`js
+console.log(1)
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ text                                                                         │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+x"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-fence.md without color 1`] = `
+"\`\`js
+console.log(1)
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ text                                                                         │
+│                                                                              │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+x"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-link.md with color 1`] = `"Um [link quebrado(https://example.com) e outro [sem fim"`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-link.md without color 1`] = `"Um [link quebrado(https://example.com) e outro [sem fim"`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-list.md with color 1`] = `
+"-item sem espaço
+1.outro sem espaço
+
+• ok"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-list.md without color 1`] = `
+"-item sem espaço
+1.outro sem espaço
+
+• ok"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-table.md with color 1`] = `
+"| a | b |
+| 1 | 2 |
+| 3 |"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > malformed-table.md without color 1`] = `
+"| a | b |
+| 1 | 2 |
+| 3 |"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > mixed-real-answer.md with color 1`] = `
+"Como funciona o loop
+════════════════════
+
+O loop de ferramentas faz três coisas:
+
+1. Envia o histórico ao provedor
+2. Recebe tool_call e valida o input com zod
+3. Executa e reenvia
+
+Exemplo mínimo:
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ typescript                                                                   │
+│ for (;;) {                                                                   │
+│   const r = await provider.stream(req);                                      │
+│   if (r.stop !== "tool_use") break;                                          │
+│ }                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+┌────────────┬───────────────┐
+│ Evento     │ Efeito        │
+├────────────┼───────────────┤
+│ text_delta │ acumula texto │
+│ tool_call  │ enfileira     │
+└────────────┴───────────────┘
+
+│ Nota: no modo -p nada disso é formatado.
+
+────────────────────────────────────────────────────────────────────────────────
+
+Pronto!"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > mixed-real-answer.md without color 1`] = `
+"Como funciona o loop
+════════════════════
+
+O loop de ferramentas faz três coisas:
+
+1. Envia o histórico ao provedor
+2. Recebe \`tool_call\` e valida o input com \`zod\`
+3. Executa e reenvia
+
+Exemplo mínimo:
+
+╭──────────────────────────────────────────────────────────────────────────────╮
+│ typescript                                                                   │
+│ for (;;) {                                                                   │
+│   const r = await provider.stream(req);                                      │
+│   if (r.stop !== "tool_use") break;                                          │
+│ }                                                                            │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+┌────────────┬───────────────┐
+│ Evento     │ Efeito        │
+├────────────┼───────────────┤
+│ text_delta │ acumula texto │
+│ tool_call  │ enfileira     │
+└────────────┴───────────────┘
+
+│ Nota: no modo \`-p\` nada disso é formatado.
+
+────────────────────────────────────────────────────────────────────────────────
+
+Pronto!"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > table.md with color 1`] = `
+"┌──────────┬───────┬───────────┐
+│ Nome     │ Idade │  Cidade   │
+├──────────┼───────┼───────────┤
+│ Ana      │    31 │  Recife   │
+│ Bernardo │     7 │ São Paulo │
+│ 李雷     │    44 │   北京    │
+└──────────┴───────┴───────────┘"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > table.md without color 1`] = `
+"┌──────────┬───────┬───────────┐
+│ Nome     │ Idade │  Cidade   │
+├──────────┼───────┼───────────┤
+│ Ana      │    31 │  Recife   │
+│ Bernardo │     7 │ São Paulo │
+│ 李雷     │    44 │   北京    │
+└──────────┴───────┴───────────┘"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > table-wide.md with color 1`] = `
+"┌────────────────────────┬────────────────────────┬────────────────────────┬───┐
+│ Coluna muito muito mu… │ Coluna muito muito mu… │ Coluna muito muito mu… │ D │
+├────────────────────────┼────────────────────────┼────────────────────────┼───┤
+│ valor extremamente co… │ valor extremamente co… │ valor extremamente co… │ x │
+└────────────────────────┴────────────────────────┴────────────────────────┴───┘"
+`;
+
+exports[`Markdown renderer — snapshots (80 columns) > table-wide.md without color 1`] = `
+"┌────────────────────────┬────────────────────────┬────────────────────────┬───┐
+│ Coluna muito muito mu… │ Coluna muito muito mu… │ Coluna muito muito mu… │ D │
+├────────────────────────┼────────────────────────┼────────────────────────┼───┤
+│ valor extremamente co… │ valor extremamente co… │ valor extremamente co… │ x │
+└────────────────────────┴────────────────────────┴────────────────────────┴───┘"
+`;

@@ -1,0 +1,21 @@
+# dependencies / build
+node_modules/
+dist/
+build/
+coverage/
+
+# logs & env
+*.log
+.env
+.env.*
+
+# maestro project-level settings (may contain keys)
+.maestro/
+
+# editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp
+*.swp
