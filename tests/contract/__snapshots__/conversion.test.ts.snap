@@ -1,0 +1,315 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`contract: history and tool conversion per provider > Anthropic messages 1`] = `
+[
+  {
+    "content": "Summarize notes.txt and then list the folder",
+    "role": "user",
+  },
+  {
+    "content": [
+      {
+        "text": "Let me look.",
+        "type": "text",
+      },
+      {
+        "id": "call_read",
+        "input": {
+          "path": "notes.txt",
+        },
+        "name": "read_file",
+        "type": "tool_use",
+      },
+      {
+        "id": "call_ls",
+        "input": {
+          "path": ".",
+          "recursive": false,
+        },
+        "name": "list_directory",
+        "type": "tool_use",
+      },
+    ],
+    "role": "assistant",
+  },
+  {
+    "content": [
+      {
+        "content": "1	hello notes",
+        "is_error": false,
+        "tool_use_id": "call_read",
+        "type": "tool_result",
+      },
+      {
+        "content": "path outside workspace",
+        "is_error": true,
+        "tool_use_id": "call_ls",
+        "type": "tool_result",
+      },
+    ],
+    "role": "user",
+  },
+  {
+    "content": [
+      {
+        "text": "The file says hello.",
+        "type": "text",
+      },
+    ],
+    "role": "assistant",
+  },
+]
+`;
+
+exports[`contract: history and tool conversion per provider > Anthropic tools (all four workspace tools) 1`] = `
+[
+  {
+    "description": "Read a UTF-8 text file inside the working directory. Returns numbered lines. Use offset/limit for large files.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "description": "Maximum number of lines to return.",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "offset": {
+          "description": "First line to return (1-based).",
+          "maximum": 9007199254740991,
+          "minimum": 1,
+          "type": "integer",
+        },
+        "path": {
+          "description": "File path, relative to the working directory.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "path",
+      ],
+      "type": "object",
+    },
+    "name": "read_file",
+  },
+  {
+    "description": "List files and folders inside the working directory. Folders end with "/". node_modules, .git and build outputs are skipped.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "description": "Directory path relative to the working directory. Defaults to ".".",
+          "type": "string",
+        },
+        "recursive": {
+          "description": "List subdirectories recursively (depth-limited).",
+          "type": "boolean",
+        },
+      },
+      "type": "object",
+    },
+    "name": "list_directory",
+  },
+  {
+    "description": "Create or overwrite a text file inside the working directory with the given full content. The user must approve the change.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "content": {
+          "description": "Full new content of the file (UTF-8). Overwrites the file if it exists.",
+          "type": "string",
+        },
+        "path": {
+          "description": "File path, relative to the working directory.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "path",
+        "content",
+      ],
+      "type": "object",
+    },
+    "name": "write_file",
+  },
+  {
+    "description": "Run a shell command inside the working directory and return its combined output and exit code. The user must approve every command.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "description": "Shell command line to run.",
+          "minLength": 1,
+          "type": "string",
+        },
+        "cwd": {
+          "description": "Working directory for the command, relative to the workspace. Defaults to the workspace root.",
+          "type": "string",
+        },
+      },
+      "required": [
+        "command",
+      ],
+      "type": "object",
+    },
+    "name": "run_command",
+  },
+]
+`;
+
+exports[`contract: history and tool conversion per provider > OpenAI-compatible messages 1`] = `
+[
+  {
+    "content": "SYSTEM",
+    "role": "system",
+  },
+  {
+    "content": "Summarize notes.txt and then list the folder",
+    "role": "user",
+  },
+  {
+    "content": "Let me look.",
+    "role": "assistant",
+    "tool_calls": [
+      {
+        "function": {
+          "arguments": "{"path":"notes.txt"}",
+          "name": "read_file",
+        },
+        "id": "call_read",
+        "type": "function",
+      },
+      {
+        "function": {
+          "arguments": "{"path":".","recursive":false}",
+          "name": "list_directory",
+        },
+        "id": "call_ls",
+        "type": "function",
+      },
+    ],
+  },
+  {
+    "content": "1	hello notes",
+    "role": "tool",
+    "tool_call_id": "call_read",
+  },
+  {
+    "content": "ERROR: path outside workspace",
+    "role": "tool",
+    "tool_call_id": "call_ls",
+  },
+  {
+    "content": "The file says hello.",
+    "role": "assistant",
+  },
+]
+`;
+
+exports[`contract: history and tool conversion per provider > OpenAI-compatible tools (all four workspace tools) 1`] = `
+[
+  {
+    "function": {
+      "description": "Read a UTF-8 text file inside the working directory. Returns numbered lines. Use offset/limit for large files.",
+      "name": "read_file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "limit": {
+            "description": "Maximum number of lines to return.",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer",
+          },
+          "offset": {
+            "description": "First line to return (1-based).",
+            "maximum": 9007199254740991,
+            "minimum": 1,
+            "type": "integer",
+          },
+          "path": {
+            "description": "File path, relative to the working directory.",
+            "type": "string",
+          },
+        },
+        "required": [
+          "path",
+        ],
+        "type": "object",
+      },
+    },
+    "type": "function",
+  },
+  {
+    "function": {
+      "description": "List files and folders inside the working directory. Folders end with "/". node_modules, .git and build outputs are skipped.",
+      "name": "list_directory",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "description": "Directory path relative to the working directory. Defaults to ".".",
+            "type": "string",
+          },
+          "recursive": {
+            "description": "List subdirectories recursively (depth-limited).",
+            "type": "boolean",
+          },
+        },
+        "type": "object",
+      },
+    },
+    "type": "function",
+  },
+  {
+    "function": {
+      "description": "Create or overwrite a text file inside the working directory with the given full content. The user must approve the change.",
+      "name": "write_file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "description": "Full new content of the file (UTF-8). Overwrites the file if it exists.",
+            "type": "string",
+          },
+          "path": {
+            "description": "File path, relative to the working directory.",
+            "type": "string",
+          },
+        },
+        "required": [
+          "path",
+          "content",
+        ],
+        "type": "object",
+      },
+    },
+    "type": "function",
+  },
+  {
+    "function": {
+      "description": "Run a shell command inside the working directory and return its combined output and exit code. The user must approve every command.",
+      "name": "run_command",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "description": "Shell command line to run.",
+            "minLength": 1,
+            "type": "string",
+          },
+          "cwd": {
+            "description": "Working directory for the command, relative to the workspace. Defaults to the workspace root.",
+            "type": "string",
+          },
+        },
+        "required": [
+          "command",
+        ],
+        "type": "object",
+      },
+    },
+    "type": "function",
+  },
+]
+`;
