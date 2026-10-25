@@ -147,14 +147,14 @@ describe('ask_user dialog (US2)', () => {
     expect(ui.lastFrame()).not.toContain('› [Banco]');
   });
 
-  it('is asked in YOLO too, and Tab during the question only changes the mode', async () => {
+  it('is asked in YOLO too, and Shift+Tab during the question only changes the mode', async () => {
     const ui = mount([toolCall('q1', 'ask_user', { questions: [banco] }), answer('ok')], {
       settings: { tools: { approvalMode: 'yolo' } },
     });
     await waitForFrame(ui, 'YOLO');
     await send(ui, 'pergunte');
     await waitForFrame(ui, 'Pergunta 1 de 1 · [Banco]');
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'Pedir permissão');
     expect(ui.controller.session.state).toBe('awaiting_answer');
     expect(ui.lastFrame()).toContain('Pergunta 1 de 1');

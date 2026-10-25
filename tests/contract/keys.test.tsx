@@ -48,20 +48,20 @@ function mountKeyboard(partial: Partial<KeyboardHandlers> = {}) {
 
 afterEach(() => vi.restoreAllMocks());
 
-/** contracts/approval-modes.md § 2 — Tab / Shift+Tab cycle the approval mode. */
-describe('contract: Tab cycles the approval mode', () => {
-  it('Tab → +1, Shift+Tab → −1 while idle', async () => {
+/** contracts/approval-modes.md § 2 — Shift+Tab cycles the approval mode; plain Tab is the prompt's. */
+describe('contract: Shift+Tab cycles the approval mode', () => {
+  it('Shift+Tab → next mode while idle; plain Tab never cycles', async () => {
     const { ui, onCycleMode } = mountKeyboard();
-    ui.stdin.write('\t');
-    await tick();
     ui.stdin.write('\x1b[Z');
     await tick();
-    expect(onCycleMode.mock.calls).toEqual([[1], [-1]]);
+    ui.stdin.write('\t');
+    await tick();
+    expect(onCycleMode.mock.calls).toEqual([[1]]);
   });
 
-  it('Tab still cycles while a confirmation is pending and does not answer it', async () => {
+  it('Shift+Tab still cycles while a confirmation is pending and does not answer it', async () => {
     const { ui, onCycleMode, onConfirm } = mountKeyboard({ state: 'awaiting_confirmation' });
-    ui.stdin.write('\t');
+    ui.stdin.write('\x1b[Z');
     await tick();
     expect(onCycleMode).toHaveBeenCalledWith(1);
     expect(onConfirm).not.toHaveBeenCalled();
@@ -70,8 +70,9 @@ describe('contract: Tab cycles the approval mode', () => {
     expect(onConfirm).toHaveBeenCalledWith(true);
   });
 
-  it('Tab is ignored while a /auth or /model dialog is open', async () => {
+  it('Shift+Tab and Tab are ignored while a /auth or /model dialog is open', async () => {
     const { ui, onCycleMode, onDialogKey } = mountKeyboard({ dialogOpen: true });
+    ui.stdin.write('\x1b[Z');
     ui.stdin.write('\t');
     await tick();
     expect(onCycleMode).not.toHaveBeenCalled();
@@ -100,13 +101,13 @@ describe('contract: ask_user dialog keys', () => {
     expect(onCancel).not.toHaveBeenCalled();
   });
 
-  it('Ctrl+C declines the question and cancels the response; Tab still cycles the mode', async () => {
+  it('Ctrl+C declines the question and cancels the response; Shift+Tab still cycles the mode', async () => {
     const onQuestionKey = vi.fn();
     const { ui, onCancel, onCycleMode } = mountKeyboard({
       state: 'awaiting_answer',
       onQuestionKey,
     });
-    ui.stdin.write('\t');
+    ui.stdin.write('\x1b[Z');
     await tick();
     expect(onCycleMode).toHaveBeenCalledWith(1);
     expect(onQuestionKey).not.toHaveBeenCalled();

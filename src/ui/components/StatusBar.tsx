@@ -12,6 +12,7 @@ import { Box, Text } from 'ink';
 import type { SessionState } from '../../session/session.js';
 import { approvalModeInfo } from '../../tools/approval.js';
 import type { ApprovalMode } from '../../tools/approval.js';
+import { visualWidth } from '../../utils/width.js';
 import type { TerminalCapabilities } from '../hooks/useTerminalCapabilities.js';
 import { MIN_COLUMNS, MIN_ROWS } from '../hooks/useTerminalCapabilities.js';
 
@@ -33,6 +34,9 @@ const STATE_TEXT: Record<SessionState, string> = {
   awaiting_confirmation: 'waiting for confirmation',
   awaiting_answer: 'waiting for your answer',
 };
+
+/** Shown beside the mode while idle, when the line has room for it. */
+export const MODE_HINT = ' (Shift+Tab para trocar)';
 
 /** Colour per mode, after qwen-code's approvalModeVisuals: warning for auto modes, error for YOLO. */
 export function approvalModeColor(mode: ApprovalMode): 'yellow' | 'red' | undefined {
@@ -64,7 +68,7 @@ export function StatusBar({
   else if (state === 'awaiting_confirmation') hints = compact ? 'y / n' : 'y approve · n decline';
   else if (state === 'awaiting_answer')
     hints = compact ? '↑↓ Enter Esc' : '↑↓ choose · Enter confirm · Esc decline';
-  else hints = compact ? '/help · Ctrl+C×2 exit' : 'Enter send · Tab modo · /help · Ctrl+C×2 exit';
+  else hints = compact ? '/help · Ctrl+C×2 exit' : 'Enter send · /help · Ctrl+C×2 exit';
   if (scrollable) hints = compact ? `PgUp/PgDn · ${hints}` : `PgUp/PgDn scroll · ${hints}`;
   if (capabilities.tooSmall) hints = '';
 
@@ -82,10 +86,26 @@ export function StatusBar({
 
   const modeColor =
     approvalMode && capabilities.color ? approvalModeColor(approvalMode) : undefined;
+  const modeText = approvalMode ? approvalModeText(approvalMode, compact, capabilities.color) : '';
+  const usageText =
+    usage && (usage.inputTokens || usage.outputTokens) && !compact
+      ? `${usage.inputTokens}↑ ${usage.outputTokens}↓  ·  `
+      : '';
+  const right = `${usageText}${hints}`;
+  // The left side is never cut (the state word matters); the hint is shown only when it fits.
+  const leftBase =
+    visualWidth(STATE_TEXT[state]) +
+    (approvalMode ? 5 + visualWidth(modeText) : 0) +
+    visualWidth(tail);
+  const showHint =
+    Boolean(approvalMode) &&
+    !compact &&
+    state === 'idle' &&
+    leftBase + visualWidth(MODE_HINT) + visualWidth(right) + 4 <= capabilities.columns;
 
   return (
     <Box height={1} flexShrink={0} paddingX={1} justifyContent="space-between" overflow="hidden">
-      <Box>
+      <Box flexShrink={0}>
         <Text dimColor>{STATE_TEXT[state]}</Text>
         {approvalMode && (
           <>
@@ -95,17 +115,15 @@ export function StatusBar({
               bold={approvalMode === 'yolo'}
               dimColor={modeColor === undefined}
             >
-              {approvalModeText(approvalMode, compact, capabilities.color)}
+              {modeText}
             </Text>
+            {showHint && <Text dimColor>{MODE_HINT}</Text>}
           </>
         )}
         <Text dimColor>{tail}</Text>
       </Box>
-      <Text dimColor>
-        {usage && (usage.inputTokens || usage.outputTokens) && !compact
-          ? `${usage.inputTokens}↑ ${usage.outputTokens}↓  ·  `
-          : ''}
-        {hints}
+      <Text dimColor wrap="truncate-end">
+        {right}
       </Text>
     </Box>
   );

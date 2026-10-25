@@ -149,6 +149,29 @@ describe('InputPrompt editor: suggestions', () => {
     expect(onSubmit).toHaveBeenLastCalledWith('/help');
   });
 
+  it('Tab accepts the highlighted suggestion (Shift+Tab does not touch the text)', async () => {
+    const onSubmit = vi.fn();
+    const { stdin, lastFrame } = render(
+      <InputPrompt {...base} commands={commands} onSubmit={onSubmit} />,
+    );
+    await tick();
+    stdin.write('/spec');
+    await tick();
+    stdin.write(K.down); // → specify
+    await tick();
+    stdin.write('\x1b[Z'); // Shift+Tab: approval mode, not ours
+    await tick();
+    expect(promptLine(lastFrame())).toContain('› /spec');
+    stdin.write('\t');
+    await tick();
+    expect(promptLine(lastFrame())).toContain('› /speckit.specify');
+    expect(promptLine(lastFrame())).not.toContain('\t');
+    stdin.write('\t'); // nothing highlighted anymore (text has a trailing space) → no-op
+    await tick();
+    expect(promptLine(lastFrame())).toContain('› /speckit.specify');
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
   it('Enter on a fully typed command that takes arguments submits it without a trailing space', async () => {
     const onSubmit = vi.fn();
     const cmds = [
