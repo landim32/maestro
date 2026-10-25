@@ -81,9 +81,19 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
     "commandTimeoutMs": 60000,
     "maxOutputChars": 20000,
     "approvalMode": "default"
+  },
+  "ui": {
+    "altScreen": true,
+    "mouse": true,
+    "pasteCollapseLines": 3,
+    "attachMaxBytes": 524288,
+    "attachMaxTotalBytes": 2097152,
+    "imageMaxBytes": 5242880
   }
 }
 ```
+
+Em `ui`: `pasteCollapseLines` é o número de linhas a partir do qual uma colagem vira marcador; `attachMaxBytes` limita cada arquivo colado, `attachMaxTotalBytes` o total anexado por mensagem e `imageMaxBytes` cada imagem.
 
 `providers.<id>.models` é a lista de modelos que o `/model` oferece para aquele provedor (edite à vontade; vazia ou ausente, vale a lista padrão acima). Um modelo digitado em "Digitar outro modelo…" ou passado em `/model <id> <modelo>` é acrescentado a ela automaticamente.
 
@@ -106,7 +116,7 @@ maestro -p "/speckit.tasks"          # comandos do Spec Kit também funcionam em
 maestro --version                    # versão do Maestro e do Spec Kit embutido
 ```
 
-A sessão interativa ocupa a tela inteira do terminal (tela alternativa, restaurada ao sair), abre com o banner "Maestro" e formata as respostas em markdown: títulos, listas, negrito, código com destaque de sintaxe e tabelas. A conversa rola dentro da interface: Page Up / Page Down (uma tela), Shift+↑ / Shift+↓ (uma linha), Home / End, e a roda do mouse onde o terminal a reporta. Um indicador à direita mostra a posição. Em `settings.json`, `ui.altScreen` e `ui.mouse` desligam esses recursos; `MAESTRO_NO_ALTSCREEN=1` também desliga a tela alternativa.
+A sessão interativa ocupa a tela inteira do terminal (tela alternativa, restaurada ao sair), abre com o banner "Maestro" e formata as respostas em markdown: títulos, listas, negrito, código com destaque de sintaxe e tabelas. A conversa rola dentro da interface: Page Up / Page Down (uma tela), Shift+↑ / Shift+↓ (uma linha), Home / End, e a roda do mouse onde o terminal a reporta. Um indicador à direita mostra a posição. Arrastar o mouse sobre a conversa seleciona e copia o texto (veja "Colar e copiar"). Em `settings.json`, `ui.altScreen` e `ui.mouse` desligam esses recursos; `MAESTRO_NO_ALTSCREEN=1` também desliga a tela alternativa.
 
 Na sessão:
 
@@ -121,6 +131,10 @@ Na sessão:
 | `/speckit.specify`, `/speckit.plan`, …   | Fluxo Spec Kit nativo (veja abaixo); `/speckit.init` instala, `/speckit.status` mostra a feature atual                                      |
 | → (seta direita)                         | Completa a primeira sugestão de comando enquanto o texto começa com `/`                                                                     |
 | ↑ / ↓                                    | Percorre o histórico de entradas (mensagens e comandos), do mais recente ao mais antigo; ↓ devolve o texto que estava sendo digitado        |
+| Colar (Ctrl+V / Shift+Insert)            | Texto com mais de 3 linhas vira um marcador `[Pasted text #1 +42 lines]`; caminhos de arquivos viram `[Arquivo: …]` (veja "Colar e copiar") |
+| Ctrl+O                                   | Mostra as primeiras linhas do marcador sob o cursor; Ctrl+O de novo fecha                                                                   |
+| Arrastar com o mouse                     | Seleciona texto da conversa e copia ao soltar (duplo clique = palavra, triplo = linha)                                                      |
+| `/mouse [on\|off]`                       | Liga/desliga o mouse na sessão (rolagem e seleção); desligado, a seleção nativa do terminal volta a funcionar                               |
 | `/clear`                                 | Nova conversa                                                                                                                               |
 | `/help`                                  | Lista comandos                                                                                                                              |
 | `/exit`                                  | Sai                                                                                                                                         |
@@ -161,6 +175,15 @@ O Maestro hospeda o [Spec Kit](https://github.com/github/spec-kit) do GitHub sem
 Quando precisa de uma decisão sua para continuar, o modelo chama a ferramenta `ask_user`: um diálogo mostra a pergunta com duas a quatro opções descritas (até quatro perguntas por chamada, uma de cada vez) e sempre uma opção **Outro…** para digitar uma resposta livre. ↑/↓ ou os dígitos escolhem, Espaço marca em múltipla escolha, Enter confirma e Esc devolve ao modelo que você não respondeu. A pergunta aparece em qualquer modo de aprovação, inclusive YOLO, e a ferramenta continua disponível com `--no-tools`. O texto digitado vai só para o modelo: não entra no histórico ↑/↓ nem nos logs.
 
 O histórico de entradas é guardado em `~/.maestro/history.jsonl` (uma linha JSON por entrada, até 1.000 entradas) e sobrevive ao fechamento do Maestro, como no Claude Code. Comandos `/` também entram; o que é digitado nos campos dos diálogos (`/auth`, `/model`), inclusive chaves, nunca entra. O modo `-p` não lê nem grava o histórico.
+
+### Colar e copiar
+
+Como no qwen-code, colar e copiar funcionam dentro da interface:
+
+- **Colagens grandes.** Um texto colado com mais de `ui.pasteCollapseLines` linhas (padrão 3) não polui o prompt: aparece como `[Pasted text #1 +42 lines]`, um marcador que se edita como um caractere só (← → pulam, Backspace apaga inteiro). O modelo recebe o texto completo, delimitado em um bloco `<pasted-text>`; a transcrição e o histórico ↑/↓ guardam só o rótulo (dentro da mesma sessão, ↑ recupera o marcador e reenvia o conteúdo). **Ctrl+O** com o cursor sobre o marcador mostra as primeiras linhas. Colagens curtas entram como texto normal; nos campos dos diálogos e no modo `-p` nada é colapsado.
+- **Arquivos.** Arraste um arquivo para o terminal ou cole o caminho (absoluto, relativo, com aspas, `~/…` ou `file://…`): ele vira `[Arquivo: nome, N linhas]` e o conteúdo, lido no momento do envio, vai ao modelo em um bloco `<file path="…">`. Vários caminhos de uma vez viram vários marcadores. Arquivos binários, maiores que `ui.attachMaxBytes` (512 KB) ou fora da pasta de trabalho são recusados com um aviso e o caminho fica como texto; o total anexado por mensagem é limitado por `ui.attachMaxTotalBytes` (2 MB).
+- **Imagens.** PNG, JPEG, GIF e WebP (até `ui.imageMaxBytes`, 5 MB) viram `[Imagem: nome, 120 KB]` quando o provedor ativo aceita imagens (Claude); o Qwen recebe um aviso e o caminho fica como texto.
+- **Copiar com o mouse.** Com o mouse ligado, arraste sobre a conversa: o trecho fica destacado e, ao soltar, é copiado para a área de transferência exatamente como está na tela (duplo clique seleciona a palavra, triplo a linha; a seleção acompanha o conteúdo se você rolar com a roda durante o arrasto). A barra mostra `copiado (N linhas)`. A cópia usa `clip.exe` / PowerShell (Windows), `pbcopy` (macOS), `wl-copy`, `xclip` ou `xsel` (Linux) e, sem nenhum deles, a sequência OSC 52 do terminal (funciona por SSH em terminais modernos). Shift+arrasto continua sendo a seleção nativa do terminal; `/mouse off` desliga o mouse na sessão (a barra mostra `mouse desligado`) e `ui.mouse: false` o deixa desligado desde o início. Testado no Windows Terminal; iTerm2, GNOME Terminal, WezTerm e kitty reportam o mouse no mesmo protocolo (SGR).
 
 Códigos de saída: `0` sucesso · `1` erro do provedor (modo `-p`) · `2` uso/configuração inválida · `3` nenhum provedor utilizável · `130` interrompido.
 

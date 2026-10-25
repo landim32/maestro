@@ -171,6 +171,55 @@ describe('no secrets leak — ask_user free text', () => {
   );
 });
 
+describe('no secrets leak — pasted content (specs/007 contracts/paste-chips.md § 4)', () => {
+  it(
+    'a pasted secret reaches the provider only; history.jsonl and the debug log record the marker and sizes',
+    { timeout: 30_000 },
+    async () => {
+      const { mountApp, KEYS } = await import('../../helpers/appHarness.js');
+      const { waitForFrame, cleanupSized, tick } = await import('../../helpers/renderSized.js');
+      const { fileHistoryStore, InputHistory } = await import('../../../src/session/history.js');
+      const SECRET = 'token-colado-ABC123';
+      const pasted = ['config:', `  key: ${SECRET}`, '  region: eu', '  retries: 3', 'end'].join(
+        '\n',
+      );
+      const logPath = path.join(tmp, 'debug.log');
+      const historyFile = path.join(tmp, 'history.jsonl');
+      const logger = createLogger({ enabled: true, filePath: logPath, secrets: [] });
+      const ui = mountApp({
+        columns: 100,
+        rows: 30,
+        controller: {
+          logger,
+          debug: true,
+          history: new InputHistory(fileHistoryStore(historyFile, logger)),
+        },
+      });
+      try {
+        await waitForFrame(ui, 'Type a message');
+        ui.stdin.write('veja ');
+        ui.stdin.write(KEYS.paste(pasted));
+        await tick();
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'Hello from fake');
+        const sent = ui.provider.requests[0]!.messages[0]!.content;
+        expect(JSON.stringify(sent)).toContain(SECRET);
+        expect(ui.stdout.frames.join('\n')).not.toContain(SECRET);
+        const history = fs.readFileSync(historyFile, 'utf8');
+        expect(history).toContain('veja [Pasted text #1 +5 lines]');
+        expect(history).not.toContain(SECRET);
+        const log = fs.readFileSync(logPath, 'utf8');
+        expect(log).toMatch(/paste\.chip/);
+        expect(log).toContain('"kind":"paste"');
+        expect(log).toContain('"lines":5');
+        expect(log).not.toContain(SECRET);
+      } finally {
+        cleanupSized();
+      }
+    },
+  );
+});
+
 describe('no secrets leak', () => {
   it('/model output masks both keys', async () => {
     const ctx = makeCtx(

@@ -26,7 +26,11 @@ export interface StatusBarProps {
   scrollable?: boolean;
   /** Live approval mode (contracts/approval-modes.md § 3). */
   approvalMode?: ApprovalMode;
+  /** `/mouse off` for this session (specs/007 contracts/mouse-selection.md § 5). */
+  mouseOff?: boolean;
 }
+
+export const MOUSE_OFF_TEXT = 'mouse desligado';
 
 const STATE_TEXT: Record<SessionState, string> = {
   idle: 'ready',
@@ -61,6 +65,7 @@ export function StatusBar({
   transientNotice,
   scrollable,
   approvalMode,
+  mouseOff,
 }: StatusBarProps) {
   const compact = capabilities.compact;
   let hints: string;
@@ -72,7 +77,7 @@ export function StatusBar({
   if (scrollable) hints = compact ? `PgUp/PgDn · ${hints}` : `PgUp/PgDn scroll · ${hints}`;
   if (capabilities.tooSmall) hints = '';
 
-  const tail = `${exitArmed ? '  ·  press Ctrl+C again to exit' : ''}${transientNotice ? `  ·  ${transientNotice}` : ''}`;
+  const tail = `${mouseOff ? `  ·  ${MOUSE_OFF_TEXT}` : ''}${exitArmed ? '  ·  press Ctrl+C again to exit' : ''}${transientNotice ? `  ·  ${transientNotice}` : ''}`;
 
   if (capabilities.tooSmall) {
     return (

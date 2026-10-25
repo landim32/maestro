@@ -46,6 +46,13 @@ export const DEFAULTS = {
     maxOutputChars: 20_000,
     approvalMode: 'default' as ApprovalMode,
   },
+  ui: {
+    /** Pastes longer than this (lines) collapse into a marker (specs/007 research R10). */
+    pasteCollapseLines: 3,
+    attachMaxBytes: 512 * 1024,
+    attachMaxTotalBytes: 2 * 1024 * 1024,
+    imageMaxBytes: 5 * 1024 * 1024,
+  },
 } as const;
 
 /** Effective Qwen endpoint: the configured URL or the protocol's default. */
@@ -89,9 +96,13 @@ export const INITIAL_SETTINGS = {
   },
   ui: {
     _comment:
-      'altScreen: draw on the alternate screen and restore the console on exit. mouse: wheel scrolling.',
+      'altScreen: draw on the alternate screen and restore the console on exit. mouse: wheel scrolling and selection (/mouse toggles). pasteCollapseLines: pastes longer than this become a [Pasted text] marker. attachMaxBytes / attachMaxTotalBytes / imageMaxBytes: limits for pasted files and images.',
     altScreen: true,
     mouse: true,
+    pasteCollapseLines: DEFAULTS.ui.pasteCollapseLines,
+    attachMaxBytes: DEFAULTS.ui.attachMaxBytes,
+    attachMaxTotalBytes: DEFAULTS.ui.attachMaxTotalBytes,
+    imageMaxBytes: DEFAULTS.ui.imageMaxBytes,
   },
   speckit: {
     _comment:

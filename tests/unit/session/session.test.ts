@@ -21,6 +21,23 @@ describe('Session', () => {
     expect(s.history[0]).toMatchObject({ role: 'user', content: [{ type: 'text', text: 'hi' }] });
   });
 
+  it('pushUser keeps a display label and appends extra parts after the text (specs/007)', () => {
+    const s = make();
+    expect(
+      s.pushUser('<pasted-text id="1" lines="4">\na\n</pasted-text>', '[Pasted text #1 +4 lines]', [
+        { type: 'image', mediaType: 'image/png', data: 'QUJD', name: 'x.png' },
+      ]),
+    ).toBe(true);
+    expect(s.history[0]).toMatchObject({
+      role: 'user',
+      display: '[Pasted text #1 +4 lines]',
+      content: [
+        { type: 'text', text: '<pasted-text id="1" lines="4">\na\n</pasted-text>' },
+        { type: 'image', mediaType: 'image/png', data: 'QUJD' },
+      ],
+    });
+  });
+
   it('records assistant messages with provider and model, skipping empty content', () => {
     const s = make();
     s.pushAssistant([], 'claude');

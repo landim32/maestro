@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { ReactElement } from 'react';
 import { render as inkRender } from 'ink';
 import type { RenderOptions } from 'ink';
+import { FrameRecorder } from '../../src/ui/frameRecorder.js';
 
 /** Fake stdout with a controllable size; emits `resize` like a real TTY. */
 export class SizedStdout extends EventEmitter {
@@ -22,7 +23,12 @@ export class SizedStdout extends EventEmitter {
   write = (chunk: string): boolean => {
     this.writes.push(chunk);
     this.frames.push(chunk);
-    this.last = chunk;
+    // Control-only chunks (mouse / bracketed-paste toggles, OSC 52) are not frames.
+    if (
+      chunk.includes('\n') ||
+      chunk.replace(/\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*\x07/g, '') !== ''
+    )
+      this.last = chunk;
     return true;
   };
 
@@ -65,13 +71,21 @@ export interface RenderSizedOptions {
 
 const instances: Array<{ unmount: () => void; cleanup: () => void }> = [];
 
-/** Like ink-testing-library's render, but with a sized stdout and access to raw writes. */
-export function renderSized(tree: ReactElement, opts: RenderSizedOptions = {}) {
+/**
+ * Like ink-testing-library's render, but with a sized stdout and access to raw writes.
+ * Ink writes through a FrameRecorder (as in production), so every test also exercises its
+ * pass-through; `tree` may be a function receiving the recorder (the App takes it as a prop).
+ */
+export function renderSized(
+  tree: ReactElement | ((frame: FrameRecorder) => ReactElement),
+  opts: RenderSizedOptions = {},
+) {
   const stdout = new SizedStdout(opts.columns ?? 80, opts.rows ?? 24);
   const stderr = new SizedStdout(opts.columns ?? 80, opts.rows ?? 24);
   const stdin = new FakeStdin();
-  const instance = inkRender(tree, {
-    stdout: stdout as unknown as NodeJS.WriteStream,
+  const frame = new FrameRecorder(stdout as unknown as NodeJS.WriteStream);
+  const instance = inkRender(typeof tree === 'function' ? tree(frame) : tree, {
+    stdout: frame.stream,
     stderr: stderr as unknown as NodeJS.WriteStream,
     stdin: stdin as unknown as NodeJS.ReadStream,
     debug: true,
@@ -84,12 +98,17 @@ export function renderSized(tree: ReactElement, opts: RenderSizedOptions = {}) {
     stdout,
     stderr,
     stdin,
+    frame,
     rerender: instance.rerender,
     unmount: instance.unmount,
+    /** Rejects when a React render error unmounted the tree (useful while debugging). */
+    waitUntilExit: () => instance.waitUntilExit(),
     lastFrame: stdout.lastFrame,
     /** Number of lines in the last frame (ignoring one trailing newline). */
     frameHeight: () => (stdout.lastFrame() ?? '').replace(/\n$/, '').split('\n').length,
     frameLines: () => (stdout.lastFrame() ?? '').replace(/\n$/, '').split('\n'),
+    /** Last frame without escape sequences (specs/007 tests compare visible text). */
+    frameText: () => (stdout.lastFrame() ?? '').replace(/\x1b\[[0-9;?]*[A-Za-z]/g, ''),
     writes: () => stdout.writes.join(''),
     resize: (columns: number, rows: number) => stdout.resize(columns, rows),
   };

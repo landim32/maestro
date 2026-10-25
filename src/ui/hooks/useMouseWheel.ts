@@ -4,26 +4,42 @@ import { useStdin, useStdout } from 'ink';
 export const MOUSE_ENABLE = '\x1b[?1002h\x1b[?1006h';
 export const MOUSE_DISABLE = '\x1b[?1002l\x1b[?1006l';
 
+/** What an SGR report means for the UI (specs/007 contracts/mouse-selection.md § 1). */
+export type MouseKind = 'press' | 'drag' | 'release' | 'wheel' | 'other';
+
 export interface SgrMouseEvent {
   button: number;
   x: number;
   y: number;
   release: boolean;
+  kind: MouseKind;
 }
 
 const SGR_RE = /\x1b\[<(\d+);(\d+);(\d+)([Mm])/g;
+
+/**
+ * Left button only: press (0), drag (32), release (0 + `m`); 64/65 are the wheel. Reports with
+ * modifiers (Shift 4, Meta 8, Ctrl 16) or other buttons are left alone.
+ */
+export function classifyMouse(ev: Pick<SgrMouseEvent, 'button' | 'release'>): MouseKind {
+  if (ev.button === 64 || ev.button === 65) return 'wheel';
+  if ((ev.button & 3) !== 0 || (ev.button & 28) !== 0) return 'other';
+  if (ev.release) return 'release';
+  return (ev.button & 32) !== 0 ? 'drag' : 'press';
+}
 
 /** Parses every SGR mouse report in `chunk` (contracts/terminal-io.md § 2). */
 export function parseSgrMouse(chunk: string): SgrMouseEvent[] {
   const out: SgrMouseEvent[] = [];
   for (const m of chunk.matchAll(SGR_RE)) {
-    out.push({ button: Number(m[1]), x: Number(m[2]), y: Number(m[3]), release: m[4] === 'm' });
+    const ev = { button: Number(m[1]), x: Number(m[2]), y: Number(m[3]), release: m[4] === 'm' };
+    out.push({ ...ev, kind: classifyMouse(ev) });
   }
   return out;
 }
 
 /** -1 for wheel up, +1 for wheel down, 0 otherwise. */
-export function wheelDirection(ev: SgrMouseEvent): -1 | 0 | 1 {
+export function wheelDirection(ev: Pick<SgrMouseEvent, 'button' | 'release'>): -1 | 0 | 1 {
   if (ev.release) return 0;
   if (ev.button === 64) return -1;
   if (ev.button === 65) return 1;

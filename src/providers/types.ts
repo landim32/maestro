@@ -10,6 +10,8 @@ export type Role = 'user' | 'assistant' | 'tool';
 
 export type ContentPart =
   | { type: 'text'; text: string }
+  /** Base64 image attached by the user (specs/007); only providers with `capabilities.images` receive it. */
+  | { type: 'image'; mediaType: string; data: string; name?: string }
   | { type: 'tool_call'; callId: string; name: string; input: unknown }
   | { type: 'tool_result'; callId: string; output: string; isError: boolean };
 
@@ -61,6 +63,8 @@ export interface ModelProvider {
   readonly displayName: string;
   status(): ProviderStatus;
   stream(req: ProviderRequest): AsyncIterable<ProviderEvent>;
+  /** Optional features; absent → text only (image parts are dropped before the request). */
+  readonly capabilities?: { images?: boolean };
 }
 
 export interface ProviderContext {

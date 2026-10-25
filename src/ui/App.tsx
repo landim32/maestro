@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Box } from 'ink';
+import { Box, useInput } from 'ink';
 import type { UiSettings } from '../config/schema.js';
-import type { SessionController } from '../session/controller.js';
+import type { PromptSubmission, SessionController } from '../session/controller.js';
+import type { CopyResult } from '../utils/clipboard.js';
+import { ContentLineCache } from './frameRecorder.js';
+import type { FrameRecorder, MouseGeometry } from './frameRecorder.js';
+import { idleSelection } from './selection.js';
+import type { SelectionState } from './selection.js';
+import { useMouseSelection } from './hooks/useMouseSelection.js';
+import { isMouseSequence } from './hooks/useMouseWheel.js';
 import type { DialogKey } from '../setup/dialog.js';
 import { pickBannerVariant } from './banner.js';
 import { Banner } from './components/Banner.js';
@@ -26,11 +33,18 @@ export interface AppProps {
   ui?: Pick<UiSettings, 'altScreen' | 'mouse' | 'color'>;
   flags?: { altScreen?: boolean; color?: boolean };
   env?: NodeJS.ProcessEnv;
+  /** Recorder wrapping the stdout given to Ink; feeds the mouse-selection text (specs/007). */
+  frame?: FrameRecorder;
+  /** Injected clipboard (tests). */
+  copy?: (text: string) => Promise<CopyResult>;
 }
 
 const DEFAULT_UI = { altScreen: true, mouse: true, color: undefined } as const;
 
-export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProps) {
+export const COPY_FAILED_NOTICE =
+  'Não foi possível copiar; use /mouse off e a seleção nativa do terminal.';
+
+export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, copy }: AppProps) {
   const snap = useSession(controller);
   const caps = useTerminalCapabilities({ ui, flags, env });
   const dialog = controller.dialog;
@@ -77,15 +91,59 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
   });
 
   const onWheel = useCallback((lines: number) => viewport.scrollBy(lines), [viewport]);
-  // Mouse tracking stays on while a dialog is open (toggling it would spam escape sequences).
-  useMouseWheel({ enabled: caps.mouse, onWheel });
+  // Mouse tracking stays on while a dialog is open (toggling it would spam escape sequences);
+  // /mouse off turns it off for the session (contracts/mouse-selection.md § 5).
+  const mouseOn = caps.mouse && snap.mouseEnabled;
+  useMouseWheel({ enabled: mouseOn, onWheel });
+
+  // Mouse selection over the transcript (contracts/mouse-selection.md § 1–4).
+  const geometryRef = useRef<MouseGeometry | undefined>(undefined);
+  const cache = useMemo(() => new ContentLineCache(), []);
+  useEffect(() => {
+    if (!frame) return;
+    return frame.onFrame((lines) => {
+      const g = geometryRef.current;
+      if (g) cache.update(lines, g);
+    });
+  }, [frame, cache]);
+  const [selection, setSelection] = useState<SelectionState>(idleSelection);
+  const lineText = useCallback((line: number) => cache.get(line), [cache]);
+  const onCopy = useCallback(
+    (r: { ok: boolean; method?: string; lines: number }) => {
+      if (!r.ok) {
+        controller.notice(COPY_FAILED_NOTICE, 'warn');
+        return;
+      }
+      const n = `${r.lines} linha${r.lines === 1 ? '' : 's'}`;
+      controller.showTransient(
+        r.method === 'osc52' ? `copiado via terminal (${n})` : `copiado (${n})`,
+      );
+    },
+    [controller],
+  );
+  const { clear: clearSelection } = useMouseSelection({
+    enabled: mouseOn && !dialog,
+    geometry: () => geometryRef.current,
+    cache,
+    copy,
+    onChange: setSelection,
+    onCopy,
+  });
+  // Any key clears the highlight (a new click replaces it inside the hook).
+  useInput((input) => {
+    if (!isMouseSequence(input)) clearSelection();
+  });
 
   const onSubmit = useCallback(
-    (text: string) => {
+    (submission: PromptSubmission) => {
       viewport.end();
-      void controller.submit(text);
+      void controller.submit(submission);
     },
     [controller, viewport],
+  );
+  const onPromptNotice = useCallback(
+    (text: string, level: 'info' | 'warn') => controller.notice(text, level),
+    [controller],
   );
 
   // /clear → back to the top, following again.
@@ -129,7 +187,14 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
       {dialog ? (
         <DialogHost dialog={dialog} color={caps.color} onInput={onDialogInput} rows={caps.rows} />
       ) : (
-        <Transcript capabilities={caps} actionsRef={viewportRef} onScrollableChange={setScrollable}>
+        <Transcript
+          capabilities={caps}
+          actionsRef={viewportRef}
+          onScrollableChange={setScrollable}
+          geometryRef={geometryRef}
+          selection={selection}
+          lineText={lineText}
+        >
           <MessageList
             history={snap.history}
             notices={snap.notices}
@@ -165,6 +230,13 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
         historyItems={snap.historyItems}
         commands={snap.commands}
         onSubmit={onSubmit}
+        chips={controller.chips}
+        limits={controller.settings.ui}
+        cwd={controller.session.cwd}
+        imagesOk={snap.imagesOk}
+        providerId={snap.providerId}
+        env={env}
+        onNotice={onPromptNotice}
         placeholder={
           dialog
             ? 'diálogo aberto — Esc para fechar'
@@ -185,6 +257,7 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
         transientNotice={controllerNotice ?? transientNotice}
         scrollable={scrollable && !dialog}
         approvalMode={snap.approvalMode}
+        mouseOff={!snap.mouseEnabled}
       />
     </Box>
   );

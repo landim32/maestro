@@ -64,6 +64,12 @@ const help: SlashCommand = {
       '  Tab / →        accept the highlighted command suggestion',
       '  ↑ / ↓          previous messages',
       '  PgUp / PgDn    scroll the conversation',
+      '  Ctrl+O         show the content behind a [Pasted text] / [Arquivo] marker',
+      '',
+      'Paste & copy: a paste longer than ui.pasteCollapseLines becomes a [Pasted text #N +L lines]',
+      'marker (the model receives the full text); pasted file paths become [Arquivo: …] attachments;',
+      'with the mouse on, drag over the conversation to select and copy (double click = word,',
+      "triple = line). /mouse off restores the terminal's own selection.",
       '',
       `Approval modes (current: ${approvalModeInfo(ctl.approvalMode).label}):`,
       ...APPROVAL_MODES.map((m) => {
@@ -110,6 +116,35 @@ const approvalMode: SlashCommand = {
     }
     ctl.setApprovalMode(mode);
     ctl.notice(`Modo de aprovação: ${approvalModeInfo(mode).label} (${mode}).`, 'info');
+  },
+};
+
+/** specs/007 contracts/mouse-selection.md § 5 — mouse tracking (wheel + selection) for this session. */
+const mouse: SlashCommand = {
+  name: 'mouse',
+  usage: '/mouse [on|off]',
+  description: 'Ligar/desligar o mouse (rolagem e seleção com cópia); sem argumento alterna.',
+  run(ctl, args) {
+    const arg = args[0]?.toLowerCase();
+    if (arg !== undefined && arg !== 'on' && arg !== 'off') {
+      ctl.notice(`Uso: /mouse [on|off] (recebido '${args[0]}').`, 'warn');
+      return;
+    }
+    if (!ctl.interactive) {
+      ctl.notice(
+        'No modo -p não há mouse; a opção vale para a sessão interativa (ui.mouse).',
+        'info',
+      );
+      return;
+    }
+    const on = arg === undefined ? !ctl.mouseEnabled : arg === 'on';
+    ctl.setMouse(on);
+    ctl.notice(
+      on
+        ? 'Mouse ligado: a roda rola a conversa e arrastar seleciona e copia.'
+        : 'Mouse desligado: use PgUp/PgDn para rolar; a seleção nativa do terminal volta a funcionar.',
+      'info',
+    );
   },
 };
 
@@ -178,7 +213,15 @@ const model: SlashCommand = {
   },
 };
 
-export const DEFAULT_COMMANDS: SlashCommand[] = [help, auth, model, approvalMode, clear, exit];
+export const DEFAULT_COMMANDS: SlashCommand[] = [
+  help,
+  auth,
+  model,
+  approvalMode,
+  mouse,
+  clear,
+  exit,
+];
 
 export interface SlashOutcome {
   /** False when `input` is not a slash command. */

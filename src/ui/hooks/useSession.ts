@@ -13,6 +13,12 @@ export function useSession(controller: SessionController) {
   }, [controller]);
 
   const s = controller.session;
+  let imagesOk = false;
+  try {
+    imagesOk = Boolean(controller.activeProvider.capabilities?.images);
+  } catch {
+    /* an unconfigured provider cannot accept images anyway */
+  }
   // Stable reference while the command list itself does not change (it only changes on /speckit.init).
   const commandList = controller.commands;
   const commands = useMemo(
@@ -37,5 +43,8 @@ export function useSession(controller: SessionController) {
     question: controller.questionFlow,
     /** Slash commands (built-in + Spec Kit) for the prompt suggestions (specs/006). */
     commands,
+    /** specs/007: live mouse state (/mouse) and whether image attachments are accepted. */
+    mouseEnabled: controller.mouseEnabled,
+    imagesOk,
   };
 }

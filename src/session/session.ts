@@ -45,13 +45,16 @@ export class Session extends EventEmitter<SessionEvents> {
     this.emit('change');
   }
 
-  /** Returns false (and does nothing) for empty/whitespace-only text (FR-007). */
-  pushUser(text: string, display?: string): boolean {
+  /**
+   * Returns false (and does nothing) for empty/whitespace-only text (FR-007).
+   * `extra` parts (images, specs/007) are appended after the text.
+   */
+  pushUser(text: string, display?: string, extra: ContentPart[] = []): boolean {
     if (text.trim() === '') return false;
     this.history.push({
       id: randomUUID(),
       role: 'user',
-      content: [{ type: 'text', text }],
+      content: [{ type: 'text', text }, ...extra],
       createdAt: new Date(),
       display,
     });

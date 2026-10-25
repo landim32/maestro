@@ -184,4 +184,81 @@ describe('SessionController.submit', () => {
     await ctl.submit('/help');
     expect(fake.requests).toHaveLength(0);
   });
+
+  it('a PromptSubmission records display, sends the expanded text and keeps image parts (specs/007)', async () => {
+    const { ctl, session, fake } = make();
+    const { InputHistory } = await import('../../../src/session/history.js');
+    const history = new InputHistory();
+    (ctl as unknown as { history: typeof history }).history = history;
+    const imageProvider = { ...fake, capabilities: { images: true } };
+    (ctl as unknown as { providerOverride: () => typeof imageProvider }).providerOverride = () =>
+      imageProvider;
+    await ctl.submit({
+      display: 'veja [Pasted text #1 +4 lines] [Imagem: x.png, 5 B]',
+      text: 'veja <pasted-text id="1" lines="4">\na\nb\nc\nd\n</pasted-text> [Imagem: x.png]',
+      parts: [{ type: 'image', mediaType: 'image/png', data: 'QUJD', name: 'x.png' }],
+      warnings: ['aviso de teste'],
+    });
+    expect(history.entries).toEqual(['veja [Pasted text #1 +4 lines] [Imagem: x.png, 5 B]']);
+    const user = session.history[0]!;
+    expect(user.display).toBe('veja [Pasted text #1 +4 lines] [Imagem: x.png, 5 B]');
+    expect(user.content[0]).toEqual({
+      type: 'text',
+      text: 'veja <pasted-text id="1" lines="4">\na\nb\nc\nd\n</pasted-text> [Imagem: x.png]',
+    });
+    expect(user.content[1]).toMatchObject({ type: 'image', mediaType: 'image/png', data: 'QUJD' });
+    expect(fake.requests[0]!.messages[0]!.content).toHaveLength(2);
+    expect(ctl.notices.some((n) => n.level === 'warn' && n.text === 'aviso de teste')).toBe(true);
+  });
+
+  it('image parts are dropped with a warning when the active provider has no image capability', async () => {
+    const { ctl, session } = make();
+    await ctl.submit({
+      display: '[Imagem: x.png, 5 B]',
+      text: '[Imagem: x.png]',
+      parts: [{ type: 'image', mediaType: 'image/png', data: 'QUJD', name: 'x.png' }],
+      warnings: [],
+    });
+    expect(session.history[0]!.content).toHaveLength(1);
+    expect(ctl.notices.some((n) => /não aceita imagens/.test(n.text))).toBe(true);
+  });
+
+  it('a marker counts as the argument of a slash command (contracts/paste-chips.md § 3)', async () => {
+    const { ctl, fake } = make();
+    await ctl.submit({
+      display: '/approval-mode [Pasted text #1 +4 lines]',
+      text: '/approval-mode <pasted-text id="1" lines="4">\nyolo\n</pasted-text>',
+      parts: [],
+      warnings: [],
+    });
+    expect(fake.requests).toHaveLength(0);
+    expect(ctl.notices.some((n) => /Modo desconhecido/.test(n.text))).toBe(true);
+  });
+
+  it('/mouse toggles and sets the session mouse state; -p only reports (contracts/mouse-selection.md § 5)', async () => {
+    const { ctl } = make();
+    expect(ctl.mouseEnabled).toBe(true);
+    await ctl.submit('/mouse');
+    expect(ctl.mouseEnabled).toBe(false);
+    expect(ctl.transient?.text).toBe('mouse off');
+    await ctl.submit('/mouse');
+    expect(ctl.mouseEnabled).toBe(true);
+    await ctl.submit('/mouse off');
+    expect(ctl.mouseEnabled).toBe(false);
+    await ctl.submit('/mouse on');
+    expect(ctl.mouseEnabled).toBe(true);
+    await ctl.submit('/mouse maybe');
+    expect(ctl.notices.at(-1)?.level).toBe('warn');
+    const p = new SessionController({
+      session: new Session({ cwd: '/w', activeProviderId: 'claude' }),
+      ctx: makeCtx(),
+      tools: [],
+      system: 'sys',
+      interactive: false,
+      providerOverride: () => textProvider(['ok']),
+    });
+    await p.submit('/mouse off');
+    expect(p.mouseEnabled).toBe(true);
+    expect(p.notices.at(-1)?.text).toMatch(/-p/);
+  });
 });

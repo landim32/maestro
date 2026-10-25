@@ -39,8 +39,24 @@ import type { Session } from './session.js';
 import { SessionBusyError } from './session.js';
 import { runTurn } from './turn.js';
 import type { TurnResult } from './turn.js';
+import { ChipRegistry } from '../ui/chips.js';
+import type { ContentPart } from '../providers/types.js';
 
 export type NoticeLevel = 'info' | 'warn' | 'error';
+
+/** What the interactive prompt hands over on Enter (specs/007 data-model.md § 3). */
+export interface PromptSubmission {
+  /** Text with chip labels (transcript, history.jsonl). */
+  display: string;
+  /** Text expanded for the model (delimited blocks). */
+  text: string;
+  /** Extra parts (images). */
+  parts: Array<Extract<ContentPart, { type: 'image' }>>;
+  /** Attachments refused or changed at send time. */
+  warnings: string[];
+  /** Chips that were sent, for the debug log (kind and size only). */
+  sent?: Array<{ kind: string; lines?: number; bytes?: number }>;
+}
 
 export interface Notice {
   id: number;
@@ -133,12 +149,17 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   questionFlow?: AskUserFlowState;
   /** True when the last slash command refused to run (unknown or missing prerequisites). */
   lastCommandBlocked = false;
+  /** Paste/file/image markers of this session (specs/007 contracts/paste-chips.md). */
+  readonly chips = new ChipRegistry();
+  /** Live mouse tracking state (initial: `ui.mouse`); `/mouse` toggles it for the session. */
+  mouseEnabled: boolean;
 
   constructor(opts: ControllerOptions) {
     super();
     this.session = opts.session;
     this.ctx = { ...opts.ctx, activeId: opts.session.activeProviderId, unverified: new Set() };
     this.approvalMode = opts.ctx.settings.tools.approvalMode;
+    this.mouseEnabled = opts.ctx.settings.ui.mouse;
     this.tools = opts.tools;
     this.system = opts.system;
     this.debug = opts.debug ?? false;
@@ -221,6 +242,13 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   showTransient(text: string): void {
     this.transient = { text, seq: ++this.transientSeq };
     this.emit('change');
+  }
+
+  /** `/mouse on|off`: mouse tracking for this session only (contracts/mouse-selection.md § 5). */
+  setMouse(on: boolean): void {
+    this.mouseEnabled = on;
+    this.logger.log('mouse.toggle', { enabled: on });
+    this.showTransient(`mouse ${on ? 'on' : 'off'}`);
   }
 
   notice(text: string, level: NoticeLevel = 'info'): void {
@@ -463,9 +491,13 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     }
   }
 
-  /** Handles one line of user input: slash command or chat message. */
+  /**
+   * Handles one line of user input: slash command or chat message. A `PromptSubmission`
+   * (interactive prompt with markers) records `display` in the history and sends `text`
+   * plus its image parts; the pasted content itself never reaches history or logs.
+   */
   async submit(
-    input: string,
+    input: string | PromptSubmission,
     opts: {
       confirm?: (a: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
       onDelta?: (text: string) => void;
@@ -475,9 +507,17 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       this.notice('Feche o diálogo (Esc) antes de enviar mensagens.', 'warn');
       return undefined;
     }
+    const submission = typeof input === 'string' ? undefined : input;
+    const typed = typeof input === 'string' ? input : input.display;
+    const expanded = typeof input === 'string' ? input : input.text;
     // Recorded before executing so that /clear and /exit are kept too (contracts/history.md § 2).
-    this.history?.push(input);
-    const slash = await executeSlash(input, this);
+    this.history?.push(typed);
+    if (submission) {
+      for (const w of submission.warnings) this.notice(w, 'warn');
+      for (const c of submission.sent ?? []) this.logger.log('paste.chip', c);
+    }
+    // Slash commands see the expanded text (a marker counts as the argument, contracts/paste-chips.md § 3).
+    const slash = await executeSlash(expanded, this);
     this.lastCommandBlocked = Boolean(slash.blocked);
     if (slash.handled && !slash.turn) return undefined;
     if (this.session.state !== 'idle') {
@@ -485,8 +525,17 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       return undefined;
     }
     // A prompt command (Spec Kit) sends the composed prompt but shows the typed line.
-    const text = slash.turn ? slash.turn.prompt : input;
-    if (!this.session.pushUser(text, slash.turn?.display)) return undefined;
+    const text = slash.turn ? slash.turn.prompt : expanded;
+    const display = slash.turn ? slash.turn.display : submission?.display;
+    let parts = submission?.parts ?? [];
+    if (parts.length > 0 && !this.activeProvider.capabilities?.images) {
+      this.notice(
+        `O provedor ${this.activeProvider.id} não aceita imagens; ${parts.length === 1 ? 'a imagem foi descartada' : 'as imagens foram descartadas'}.`,
+        'warn',
+      );
+      parts = [];
+    }
+    if (!this.session.pushUser(text, display, parts)) return undefined;
 
     this.partialText = '';
     const provider = this.activeProvider;

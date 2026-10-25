@@ -61,7 +61,9 @@ describe('InputPrompt editor: cursor', () => {
     expect(promptLine(lastFrame())).toContain('XabdeY');
     stdin.write(K.enter);
     await tick();
-    expect(onSubmit).toHaveBeenCalledWith('XabdeY');
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'XabdeY', display: 'XabdeY' }),
+    );
   });
 
   it('layoutInput wraps at spaces and cursorLine finds the visual line', () => {
@@ -117,7 +119,9 @@ describe('InputPrompt editor: suggestions', () => {
     await tick();
     stdin.write(K.enter);
     await tick();
-    expect(onSubmit).toHaveBeenCalledWith('/speckit.plan');
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '/speckit.plan', display: '/speckit.plan' }),
+    );
     expect(promptLine(lastFrame())).not.toContain('/speckit');
   });
 
@@ -137,7 +141,12 @@ describe('InputPrompt editor: suggestions', () => {
     await tick();
     stdin.write(K.enter);
     await tick();
-    expect(onSubmit).toHaveBeenCalledWith('/speckit.specify Add login');
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '/speckit.specify Add login',
+        display: '/speckit.specify Add login',
+      }),
+    );
 
     stdin.write('/he');
     await tick();
@@ -146,7 +155,9 @@ describe('InputPrompt editor: suggestions', () => {
     expect(promptLine(lastFrame())).toContain('/help');
     stdin.write(K.enter);
     await tick();
-    expect(onSubmit).toHaveBeenLastCalledWith('/help');
+    expect(onSubmit).toHaveBeenLastCalledWith(
+      expect.objectContaining({ text: '/help', display: '/help' }),
+    );
   });
 
   it('Tab accepts the highlighted suggestion (Shift+Tab does not touch the text)', async () => {
@@ -184,7 +195,9 @@ describe('InputPrompt editor: suggestions', () => {
     await tick();
     stdin.write(K.enter);
     await tick();
-    expect(onSubmit).toHaveBeenCalledWith('/model'); // not "/model " (it would pollute the history)
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '/model', display: '/model' }),
+    ); // not "/model " (it would pollute the history)
   });
 
   it('↑/↓ still browse the history when no suggestion is open', async () => {

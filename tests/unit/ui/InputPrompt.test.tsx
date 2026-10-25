@@ -17,7 +17,9 @@ describe('InputPrompt', () => {
     expect(lastFrame()).toContain('hello');
     stdin.write('\r');
     await tick();
-    expect(onSubmit).toHaveBeenCalledWith('hello');
+    expect(onSubmit).toHaveBeenCalledWith(
+      expect.objectContaining({ text: 'hello', display: 'hello' }),
+    );
     expect(lastFrame()).not.toContain('hello');
   });
 
