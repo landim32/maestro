@@ -84,9 +84,11 @@ describe('approval modes (US1)', () => {
     await waitForFrame(ui, 'arquivo criado');
     const frame = ui.lastFrame() ?? '';
     expect(frame).not.toContain('[y]');
-    expect(frame).toContain('⚙ write_file hello.txt');
-    expect(frame).toContain('new file: hello.txt (1 lines)');
-    expect(frame).toContain('auto (Aceitar edições)');
+    // specs/009: the call and its result replace the `⚙` notice in the interactive transcript
+    expect(frame).toContain('⏺ Write(hello.txt)');
+    expect(frame).toContain('⎿  arquivo novo · 1 linha · auto (Aceitar edições)');
+    expect(frame).toMatch(/1 \+ olá/);
+    expect(frame).not.toContain('⚙ write_file');
     expect(fs.readFileSync(path.join(cwd, 'hello.txt'), 'utf8')).toBe('olá');
     // the tool result went back to the model
     expect(ui.provider.requests[1]?.messages.at(-1)?.role).toBe('tool');

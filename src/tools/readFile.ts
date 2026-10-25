@@ -36,6 +36,8 @@ export const readFileTool: ToolDefinition<ReadFileInput> = {
       return { isError: true, output: `${input.path} looks like a binary file` };
 
     const lines = buf.toString('utf8').split(/\r?\n/);
+    // The empty string after a final newline is not a line (specs/009: `⎿ Leu N linhas`).
+    if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop();
     const start = (input.offset ?? 1) - 1;
     const end = input.limit !== undefined ? start + input.limit : lines.length;
     const slice = lines.slice(start, end);

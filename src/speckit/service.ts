@@ -181,7 +181,7 @@ export class SpecKitService {
     if (!req) return undefined;
     if (isInvocationError(req)) {
       this.onStep?.(req.step, { ok: false, output: req.error, summary: req.error });
-      return { isError: true, output: req.error };
+      return { isError: true, output: req.error, display: { speckitStep: req.step } };
     }
     const started = Date.now();
     const result = await runStep(req, this.stepContext());
@@ -191,6 +191,11 @@ export class SpecKitService {
     const output = result.warnings?.length
       ? `${result.warnings.join('\n')}\n${result.output}`
       : result.output;
-    return { isError: !result.ok, output };
+    // Display only (specs/009): the transcript shows `⏺ Speckit(<step>)` with the step summary.
+    return {
+      isError: !result.ok,
+      output,
+      display: { speckitStep: req.step, summary: result.ok ? result.summary : undefined },
+    };
   };
 }

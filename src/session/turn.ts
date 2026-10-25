@@ -14,7 +14,9 @@ import type {
   ToolContext,
   ToolDefinition,
   ToolResult,
+  ToolResultDisplay,
 } from '../tools/types.js';
+import type { FileDiff } from '../tools/diff.js';
 import { MaestroError } from '../utils/errors.js';
 import type { Session } from './session.js';
 
@@ -32,6 +34,8 @@ export interface TurnCallbacks {
   onAutoApproved?: (name: string, input: unknown, summary: string, mode: ApprovalMode) => void;
   onToolStart?: (name: string, input: unknown) => void;
   onToolEnd?: (name: string, result: ToolResult) => void;
+  /** Every `usage` event as it arrives (specs/009 research R4: live token count). */
+  onUsage?: (inputTokens: number, outputTokens: number) => void;
 }
 
 export interface TurnOptions {
@@ -88,6 +92,7 @@ async function collect(
       case 'usage':
         usage.inputTokens += ev.inputTokens;
         usage.outputTokens += ev.outputTokens;
+        cb.onUsage?.(ev.inputTokens, ev.outputTokens);
         break;
       case 'done':
         c.stop = ev.stopReason;
@@ -138,6 +143,18 @@ async function executeTool(
     if (intercepted) return intercepted;
   }
 
+  // Diff of what the call will change, taken once before it runs (specs/009 contracts/diff-view.md § 5).
+  let diff: FileDiff | undefined;
+  if (tool.diff) {
+    try {
+      diff = await tool.diff(input, ctx);
+    } catch {
+      diff = undefined; // the preview/run report the problem themselves
+    }
+  }
+  const display: ToolResultDisplay = {};
+  if (diff) display.diff = diff;
+
   // Approval policy (contracts/approval-modes.md): read/question never ask; the rest depends on the mode.
   const { kind, reason } = classifyAction(tool, input);
   if (kind !== 'read' && kind !== 'question') {
@@ -158,14 +175,16 @@ async function executeTool(
           previewText,
           reason,
           mode,
+          diff,
           resolve,
         };
         session.setPendingConfirmation(action);
         cb.confirm!(action).then(resolve, () => resolve(false));
       });
       session.setPendingConfirmation(undefined);
-      if (!approved) return { isError: true, output: 'user declined' };
+      if (!approved) return { isError: true, output: 'user declined', display: { declined: true } };
     } else {
+      display.autoMode = mode;
       cb.onAutoApproved?.(tool.name, input, firstLine(previewText), mode);
     }
   }
@@ -180,6 +199,8 @@ async function executeTool(
       output: `tool failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
+  if (Object.keys(display).length > 0)
+    result = { ...result, display: { ...display, ...result.display } };
   cb.onToolEnd?.(tool.name, result);
   return result;
 }
@@ -409,7 +430,7 @@ export async function runTurn(
         session.pushAssistant(parts, provider.id, model, opts.route);
 
         iterations += 1;
-        const results: Array<{ callId: string; output: string; isError: boolean }> = [];
+        const results: Array<{ callId: string } & ToolResult> = [];
         for (const tc of collected.toolCalls) {
           const tool = toolMap.get(tc.name as ToolDefinition['name']);
           if (!tool) {

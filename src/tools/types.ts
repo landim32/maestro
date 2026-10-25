@@ -1,6 +1,22 @@
 import type { z } from 'zod';
 import type { ToolsSettings } from '../config/schema.js';
 import type { ApprovalMode, ToolKind } from './approval.js';
+import type { FileDiff } from './diff.js';
+
+/**
+ * Display-only metadata of a tool result (specs/009 data-model § 3). Shown in the transcript;
+ * never sent to the model (the provider converters copy only callId/output/isError).
+ */
+export interface ToolResultDisplay {
+  diff?: FileDiff;
+  /** The action ran without asking because of this approval mode. */
+  autoMode?: ApprovalMode;
+  /** The user declined the action. */
+  declined?: boolean;
+  /** Native Spec Kit step that replaced a script invocation. */
+  speckitStep?: string;
+  summary?: string;
+}
 
 export type ToolName = 'read_file' | 'list_directory' | 'write_file' | 'run_command' | 'ask_user';
 
@@ -39,6 +55,7 @@ export interface ToolContext {
 export interface ToolResult {
   output: string;
   isError: boolean;
+  display?: ToolResultDisplay;
 }
 
 export interface ToolDefinition<I = unknown> {
@@ -50,6 +67,8 @@ export interface ToolDefinition<I = unknown> {
   kind: ToolKind;
   /** Text shown to the user before confirmation (diff, command…). */
   preview?: (input: I, ctx: ToolContext) => Promise<string>;
+  /** Structured diff of what the call would change, computed before it runs (specs/009). */
+  diff?: (input: I, ctx: ToolContext) => Promise<FileDiff>;
   run: (input: I, ctx: ToolContext) => Promise<ToolResult>;
 }
 
@@ -61,6 +80,8 @@ export interface PendingToolAction {
   /** Why confirmation is required beyond the mode's default rule (e.g. a destructive pattern). */
   reason?: string;
   mode: ApprovalMode;
+  /** Structured diff for the dialog (write_file). */
+  diff?: FileDiff;
   resolve: (approved: boolean) => void;
 }
 

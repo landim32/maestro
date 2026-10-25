@@ -45,8 +45,15 @@ describe('App scrolling (US2)', () => {
   it('Shift+arrows scroll one line and never type into the prompt', async () => {
     const ui = mountApp({ columns: 80, rows: 24, provider: linesProvider(60) });
     await askLong(ui);
+    // The turn summary (`✻ Ns …`, specs/009) is the last content line; one line up hides only it.
+    const summary = /✻ \d+s/;
+    await waitFor(() => summary.test(frame(ui)), 3000, 'summary at the bottom');
     ui.stdin.write(KEYS.shiftUp);
-    await waitFor(() => !frame(ui).includes('L0060'), 3000, 'shift up');
+    await waitFor(() => !summary.test(frame(ui)), 3000, 'shift up');
+    expect(frame(ui)).toContain('L0060');
+    ui.stdin.write(KEYS.shiftUp);
+    ui.stdin.write(KEYS.shiftUp);
+    await waitFor(() => !frame(ui).includes('L0060'), 3000, 'shift up twice more');
     expect(frame(ui)).toContain('L0059');
     ui.stdin.write(KEYS.shiftDown);
     await waitForFrame(ui, 'L0060');

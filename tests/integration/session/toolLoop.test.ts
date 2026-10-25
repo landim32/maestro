@@ -75,6 +75,13 @@ describe('tool loop', () => {
       const result = s.history[2]?.content[0];
       expect(result?.type === 'tool_result' && result.isError).toBe(!approve);
       if (!approve) expect(result?.type === 'tool_result' && result.output).toBe('user declined');
+      // specs/009: display metadata in the built-in loop as well
+      if (approve)
+        expect(result?.type === 'tool_result' && result.display?.diff).toMatchObject({
+          kind: 'new',
+          path: `out-${approve}.txt`,
+        });
+      else expect(result?.type === 'tool_result' && result.display).toEqual({ declined: true });
       expect(s.state).toBe('idle');
     }
   });

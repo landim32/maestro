@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createTwoFilesPatch } from 'diff';
 import { z } from 'zod';
+import { fileDiff } from './diff.js';
 import { resolveInsideCwd } from './sandbox.js';
 import type { ToolDefinition } from './types.js';
 
@@ -22,6 +23,13 @@ export const writeFileTool: ToolDefinition<WriteFileInput> = {
     'Create or overwrite a text file inside the working directory with the given full content. May require user approval depending on the approval mode.',
   inputSchema,
   kind: 'edit',
+  /** Structured diff for the dialog and the transcript (specs/009); read before the write. */
+  async diff(input, ctx) {
+    const abs = resolveInsideCwd(ctx.cwd, input.path);
+    const existing = await fs.readFile(abs, 'utf8').catch(() => null);
+    return fileDiff(existing, input.content, input.path);
+  },
+  // Plain-text preview: first line is the `-p`/auto announcement, kept as before (SC-007).
   async preview(input, ctx) {
     const abs = resolveInsideCwd(ctx.cwd, input.path);
     const existing = await fs.readFile(abs, 'utf8').catch(() => null);

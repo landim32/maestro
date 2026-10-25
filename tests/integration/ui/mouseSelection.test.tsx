@@ -49,18 +49,19 @@ describe('mouse selection and copy (contracts/mouse-selection.md)', () => {
       const copy = copier({ ok: true, method: 'xclip' });
       const ui = await mountWithLines(copy);
       const y = rowOf(ui, 'L0030 content');
-      // text starts at column 2 (1-based): the message list has one cell of padding
-      ui.stdin.write(KEYS.mouse(0, 2, y));
-      ui.stdin.write(KEYS.mouse(32, 6, y + 1));
+      // text starts at column 4 (1-based): one cell of padding + the 2-column ⏺ marker (specs/009)
+      ui.stdin.write(KEYS.mouse(0, 4, y));
+      ui.stdin.write(KEYS.mouse(32, 8, y + 1));
       await tick(60);
       expect(ui.lastFrame()).toContain(`${INVERSE}L0030 content`); // live highlight while dragging
-      ui.stdin.write(KEYS.mouse(32, 6, y + 2));
-      ui.stdin.write(KEYS.mouse(0, 6, y + 2, true));
+      ui.stdin.write(KEYS.mouse(32, 8, y + 2));
+      ui.stdin.write(KEYS.mouse(0, 8, y + 2, true));
       await waitFor(() => copy.mock.calls.length === 1, 3000, 'copy called');
-      expect(copy).toHaveBeenCalledWith('L0030 content\n L0031 content\n L0032');
+      // continuation rows start at column 1: padding + the ⏺ column + the markdown indent are visible text
+      expect(copy).toHaveBeenCalledWith('L0030 content\n   L0031 content\n   L0032');
       await waitForFrame(ui, 'copiado (3 linhas)');
       expect(ui.lastFrame()).toContain(`${INVERSE}L0030 content`);
-      expect(ui.lastFrame()).toContain(`${INVERSE} L0032`);
+      expect(ui.lastFrame()).toContain(`${INVERSE}   L0032`);
       // typing clears the highlight
       ui.stdin.write('x');
       await tick(60);
@@ -119,13 +120,15 @@ describe('mouse selection and copy (contracts/mouse-selection.md)', () => {
       const copy = copier({ ok: true, method: 'wl-copy' });
       const ui = await mountWithLines(copy);
       const y = rowOf(ui, 'L0034 content');
-      ui.stdin.write(KEYS.mouse(0, 2, y));
+      ui.stdin.write(KEYS.mouse(0, 4, y));
       ui.stdin.write(KEYS.wheelUp); // content moves down by 3 lines
       await tick(60);
-      ui.stdin.write(KEYS.mouse(32, 2, y)); // same screen row → an earlier content line (upward drag)
-      ui.stdin.write(KEYS.mouse(0, 2, y, true));
+      ui.stdin.write(KEYS.mouse(32, 4, y)); // same screen row → an earlier content line (upward drag)
+      ui.stdin.write(KEYS.mouse(0, 4, y, true));
       await waitFor(() => copy.mock.calls.length === 1, 3000, 'copy called');
-      expect(copy.mock.calls[0]![0]).toBe('L0031 content\n L0032 content\n L0033 content\n L');
+      expect(copy.mock.calls[0]![0]).toBe(
+        'L0031 content\n   L0032 content\n   L0033 content\n   L',
+      );
     },
   );
 
@@ -141,9 +144,9 @@ describe('mouse selection and copy (contracts/mouse-selection.md)', () => {
       ui.stdin.write(KEYS.enter);
       await waitForFrame(ui, 'mouse desligado');
       const y = rowOf(ui, 'L0038 content');
-      ui.stdin.write(KEYS.mouse(0, 2, y));
-      ui.stdin.write(KEYS.mouse(32, 8, y + 1));
-      ui.stdin.write(KEYS.mouse(0, 8, y + 1, true));
+      ui.stdin.write(KEYS.mouse(0, 4, y));
+      ui.stdin.write(KEYS.mouse(32, 10, y + 1));
+      ui.stdin.write(KEYS.mouse(0, 10, y + 1, true));
       await tick(60);
       expect(copy).not.toHaveBeenCalled();
       expect(ui.lastFrame()).not.toContain(`${INVERSE}L0038`);
@@ -153,9 +156,9 @@ describe('mouse selection and copy (contracts/mouse-selection.md)', () => {
       await waitForFrame(ui, 'Mouse ligado');
       await tick(60);
       const y2 = rowOf(ui, 'L0038 content');
-      ui.stdin.write(KEYS.mouse(0, 2, y2));
-      ui.stdin.write(KEYS.mouse(32, 8, y2));
-      ui.stdin.write(KEYS.mouse(0, 8, y2, true));
+      ui.stdin.write(KEYS.mouse(0, 4, y2));
+      ui.stdin.write(KEYS.mouse(32, 10, y2));
+      ui.stdin.write(KEYS.mouse(0, 10, y2, true));
       await waitFor(() => copy.mock.calls.length === 1, 3000, 'copy after /mouse on');
       expect(copy).toHaveBeenCalledWith('L0038 c');
     },

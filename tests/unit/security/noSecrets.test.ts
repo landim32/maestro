@@ -348,3 +348,46 @@ describe('no secrets leak', () => {
     expect(log).toContain('****abcd');
   });
 });
+
+describe('no secrets leak — display metadata (specs/009 FR-022)', () => {
+  it('a write diff and the activity never reach the debug log', async () => {
+    const SECRET = 'CONTEUDO-DO-ARQUIVO-SECRETO-7a7a';
+    const cwd = fs.mkdtempSync(path.join(tmp, 'ws-'));
+    fs.writeFileSync(path.join(cwd, 'cfg.txt'), 'antes\n');
+    const logFile = path.join(tmp, 'debug.log');
+    const { allTools } = await import('../../../src/tools/registry.js');
+    const { createFakeProvider } = await import('../../helpers/fakeProvider.js');
+    const provider = createFakeProvider([
+      [
+        {
+          type: 'tool_call',
+          callId: 'w',
+          name: 'write_file',
+          input: { path: 'cfg.txt', content: `${SECRET}\n` },
+        },
+        { type: 'done', stopReason: 'tool_use' },
+      ],
+      [
+        { type: 'text_delta', text: 'ok' },
+        { type: 'done', stopReason: 'end_turn' },
+      ],
+    ]);
+    const controller = new SessionController({
+      session: new Session({ cwd, activeProviderId: 'claude' }),
+      ctx: makeCtx({ tools: { approvalMode: 'auto-edit' } }),
+      tools: allTools(),
+      system: 'sys',
+      interactive: true,
+      logger: createLogger({ enabled: true, filePath: logFile }),
+      providerOverride: () => provider,
+    });
+    await controller.submit('grave');
+    const tool = controller.session.history.find((m) => m.role === 'tool')?.content[0];
+    expect(tool?.type === 'tool_result' && tool.display?.diff?.kind).toBe('edit');
+    const log = fs.readFileSync(logFile, 'utf8');
+    expect(log).toContain('turn.end');
+    expect(log).toContain('outTokensShown');
+    expect(log).not.toContain(SECRET);
+    expect(log).not.toContain('antes');
+  });
+});

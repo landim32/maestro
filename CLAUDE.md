@@ -33,6 +33,14 @@ Last updated: 2026-10-25
 
 **Setup dialogs.** `/auth`, `/model`, `/routes` and `ask_user` are pure reducers in `src/setup/` (`authFlow`, `modelFlow`, `routesFlow`, `askUserFlow`); all side effects (connection test, settings writes, the `ant` CLI process) live only in `setup/driver.ts` (`SetupDriver`) and are injectable (`setupDeps`, `settingsWriter`, `settingsLoader`). `config/writer.ts` does patch-by-path, validated, atomic writes to `settings.json` preserving `_comment`; route names contain dots, so routes are written with explicit `segments`. Model catalogue: `providers.<id>.models` derivations are pure in `config/models.ts` (`modelCatalog`, `learnModelPatch` on the raw global file); learned models go to the global file only.
 
+**Conversation display (specs/009).** Three pure modules drive it:
+
+- `session/activity.ts` (`activityReducer`, phrases, `formatSummary`) holds the activity line state. `SessionController.activity` is fed by `onDelta`, `onUsage`, `onToolStart`/`onToolEnd` and the session state (confirm/question), and is rendered by `ui/components/ActivityLine.tsx`, a fixed `flexShrink={0}` row above the prompt with its own timer, so the transcript never re-renders on a tick. The interactive turn ends with a `✻ …` info notice.
+- `ui/toolDisplay.ts` (`describeCall`/`describeResult`) gives `MessageList` the `⏺ Label(arg)` + `⎿ summary` rows. It pairs each `tool_call` with its `tool_result` by `callId` and does not draw paired `tool` messages.
+- `tools/diff.ts` (`fileDiff` over `structuredPatch`) builds the structured diff. `executeTool` calls `tool.diff` (only `write_file`) once before approval and attaches it to `PendingToolAction.diff` and to `tool_result.display`.
+
+`display` (`{ diff, autoMode, declined, speckitStep, summary }`) is display-only: the provider converters copy only `callId`/`output`/`isError` (guarded by `tests/contract/display.test.ts`). The `⚙`/`⚠` tool notices are emitted only when `interactive` is false (`-p`, stderr). In the interactive session that information lives in the transcript, and `write_file.preview` keeps its text because its first line is the `-p` announcement.
+
 **Spec Kit host (specs/006).** `src/speckit/` discovers command files in `.maestro/commands/` → the folder of the integration in `.specify/integration.json` (e.g. `.claude/commands/`) → bundled v1.2.3 copies in `assets/speckit/` (MIT; never edit except via `assets/speckit/NOTICE`-documented modifications). A `/speckit.*` command is a prompt command: `SlashCommand.run` returns a `PromptTurn` (`display` + `prompt` = preamble + body). The helper scripts are never executed: `TurnOptions.intercept` (before approval) turns any `run_command` matching `.specify/scripts/{bash,powershell,python}/*` (`parseInvocation`, three dialects) into a native step (`runStep` over an injectable `StepContext`: git via `execFile`, assets, clock) returning the scripts' JSON. Steps are pure modules in `speckit/steps/`; feature resolution is env → `.specify/feature.json` → git branch → newest `specs/` dir; `createFeature` also creates the branch (`speckit.createBranch`). `preflightFor` blocks a command with the script's own error before the model is called (`CommandBlocked` → `-p` exits 2). `/speckit.init [--upgrade]` installs from the assets with a sha256 manifest.
 
 **UI (Ink).** `ui/App.tsx` is a fixed-height layout: root Box `height={rows}`, every fixed region (Header, InputPrompt, StatusBar, dialogs) needs `flexShrink={0}` and scroll containers need `minHeight={0}`, otherwise Yoga's min-height:auto pushes rows off-screen. The UI never writes escape sequences itself; only `hooks/useMouseWheel` (SGR mouse), `utils/clipboard.ts` (OSC 52 fallback) and Ink (`alternateScreen`, bracketed paste) do. Assistant text goes through `ui/markdown/` (remark + gfm, lowlight); user and tool text stays literal. Paste/file/image markers (specs/007) are ONE private-use code point (U+E000 + id) in the prompt's `string[]`, resolved via the session's `ChipRegistry` (`controller.chips`, helpers in `ui/chips.ts`); Enter builds a `PromptSubmission` (`display` for transcript/history, `text` expanded with `<pasted-text>`/`<file>` blocks for the model, `parts` for images). Pasted content never reaches `history.jsonl` or the debug log. Mouse selection is the pure reducer `ui/selection.ts` driven by `useMouseSelection`; copied text comes from `ui/frameRecorder.ts`, a Proxy over the stdout handed to Ink. Image parts require `ModelProvider.capabilities.images` (Claude only).
@@ -60,12 +68,12 @@ src/
 ├── cli/          args, exitCodes, preflight, firstRun, interactive, nonInteractive
 ├── config/       paths, schema (zod), defaults, loader, writer, models, projectContext
 ├── providers/    types, status, registry, anthropicProtocol, claude, qwen, claudeCode + claudeCodeStream + mcpBridge (specs/010)
-├── session/      session, turn, commands, controller, systemPrompt, history
-├── tools/        types, approval [qwen-code attrib], askUser [attrib], sandbox, readFile, listDirectory, writeFile, runCommand, registry
+├── session/      session, turn, commands, controller, systemPrompt, history, activity
+├── tools/        types, approval [qwen-code attrib], askUser [attrib], sandbox, readFile, listDirectory, writeFile, runCommand, registry, diff
 ├── routes/       catalog, resolve (pure)
 ├── setup/        methods, authFlow, modelFlow, askUserFlow, routesFlow (reducers), driver, connectionTest, antCli, installHints, dialog
 ├── speckit/      discovery, prompt, preamble, invocation, feature, naming, numbering, templates, git, init, status, service, steps/*
-├── ui/           App, banner, chips, attachments, selection, frameRecorder, components/, markdown/, dialogs/, hooks/
+├── ui/           App, banner, chips, attachments, selection, frameRecorder, toolDisplay, components/ (ActivityLine, DiffView…), markdown/, dialogs/, hooks/
 └── utils/        mask, errors, tty, logger, clipboard
 assets/speckit/   bundled spec-kit v1.2.3 (MIT): VERSION, NOTICE, templates/, scripts/
 tests/            unit/ integration/ contract/ helpers/
@@ -74,14 +82,15 @@ specs/NNN-*/      spec, plan, research, data-model, contracts, quickstart, tasks
 
 ## Active Technologies
 
+- 009-ai-output-display: no new dependencies; `diff` `structuredPatch` for the structured write diff; `tool_result.display` is in-memory only (never sent to the model nor persisted)
 - TypeScript 5.9, Node.js ≥ 22 (ESM), single npm package with the `maestro` binary; `@anthropic-ai/sdk`, `openai`, `ink` 8 + `react` 19, `yargs`, `zod` 4 (`z.toJSONSchema` for tool schemas), `diff`, `unified`/`remark-parse`/`remark-gfm`, `lowlight`, `string-width`, `ink-gradient`; `vitest` 5 + `ink-testing-library` — the Claude Code provider needs the user's own `claude` CLI (001–010)
 - Storage: `~/.maestro/settings.json` (global, written by Maestro) and `./.maestro/settings.json` (project); `~/.maestro/history.jsonl`; per project `.specify/` (templates, scripts, `memory/`, `feature.json`, `integration.json`, `integrations/maestro.manifest.json`), `.maestro/commands/`, `MAESTRO.md`; conversation history is in-memory only (001–008)
 
 ## Recent Changes
 
+- 009-ai-output-display: activity line (time, tokens), Claude Code style transcript (⏺/⎿), structured write diff in dialog and transcript
 - 010-claude-code-provider: provider `claude-code` (user's Claude Code CLI, tools via a loopback MCP bridge); API provider flagged as consuming credits
 - 008-model-routes: routes per model (`settings.routes`, `/routes`, `/ask`, `--route`)
-- 007-paste-copy-console: paste collapse, file/image attachments, mouse selection + clipboard
 
 <!-- MANUAL ADDITIONS START -->
 
