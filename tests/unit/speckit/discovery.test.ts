@@ -130,7 +130,10 @@ describe('prompt turn', { timeout: 60_000 }, () => {
     const file = discoverCommands(repo.root, assets).commands.find(
       (c) => c.name === 'speckit.specify',
     )!;
-    expect(renderCommandBody(file, '  Add login  ')).toContain('```text\nAdd login\n```');
+    // tolerate CRLF checkouts of the assets (the .gitattributes pins LF, but keep the test robust)
+    expect(renderCommandBody(file, '  Add login  ').replace(/\r\n/g, '\n')).toContain(
+      '```text\nAdd login\n```',
+    );
     expect(renderCommandBody(file, '')).not.toContain('$ARGUMENTS');
     const turn = buildPromptTurn(file, 'Add login');
     expect(turn.display).toBe('/speckit.specify Add login');
