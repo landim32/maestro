@@ -2,6 +2,8 @@ import type { ProviderId } from '../providers/types.js';
 import type { MethodId } from '../setup/methods.js';
 import type { PromptTurn } from '../speckit/prompt.js';
 import { APPROVAL_MODES, approvalModeInfo, parseApprovalMode } from '../tools/approval.js';
+import { routeNamesText } from '../routes/catalog.js';
+import type { RouteEntry } from '../routes/catalog.js';
 import type { SessionController } from './controller.js';
 
 export type { PromptTurn };
@@ -13,6 +15,11 @@ export interface SlashCommand {
   description: string;
   /** Where the command comes from (`/help` shows it); undefined for built-ins. */
   origin?: string;
+  /**
+   * `'prompt'`: sends a prompt to the model and therefore has its own route;
+   * `'route'`: forces a route itself (`/ask`, purpose shortcuts) and is not listed as a route (specs/008).
+   */
+  kind?: 'prompt' | 'route';
   /**
    * Runs the command. `args` are whitespace-split, `rest` is the raw text after the name.
    * Returning a `PromptTurn` runs a model turn with that prompt (Spec Kit commands).
@@ -42,10 +49,14 @@ const help: SlashCommand = {
   run(ctl) {
     const lines = ['Commands:'];
     const builtin = ctl.commands.filter((c) => !c.origin);
-    const speckit = ctl.commands.filter((c) => c.origin);
+    const aliases = ctl.commands.filter((c) => c.origin === 'rota');
+    const speckit = ctl.commands.filter((c) => c.origin && c.origin !== 'rota');
     for (const c of builtin) {
       const names = [c.name, ...(c.aliases ?? [])].map((n) => `/${n}`).join(', ');
       lines.push(`  ${(c.usage ?? names).padEnd(26)} ${c.description}`);
+    }
+    for (const c of aliases) {
+      lines.push(`  ${(c.usage ?? `/${c.name}`).padEnd(26)} (atalho da rota ${c.name})`);
     }
     if (speckit.length > 0) {
       lines.push('', `Spec Kit (${ctl.specKit?.summary() ?? 'comandos do projeto'}):`);
@@ -118,6 +129,60 @@ const approvalMode: SlashCommand = {
     ctl.notice(`Modo de aprovação: ${approvalModeInfo(mode).label} (${mode}).`, 'info');
   },
 };
+
+/** specs/008 contracts/routes-dialog.md § 6 — send one request through a named route. */
+const ask: SlashCommand = {
+  name: 'ask',
+  usage: '/ask <rota> <pedido>',
+  description: 'Envia o pedido por uma rota (chat, github, infra, um comando ou uma rota sua).',
+  kind: 'route',
+  run(ctl, args, rest) {
+    const route = args[0]?.toLowerCase();
+    const text = (rest ?? '').replace(/^\S+\s*/, '').trim();
+    const entries = ctl.routeEntries();
+    const known = entries.some((e) => e.name === route && !e.missingCommand);
+    if (!route || !known || text === '') {
+      ctl.notice(`Uso: /ask <rota> <pedido>. Rotas: ${routeNamesText(entries)}`, 'warn');
+      return;
+    }
+    return { display: `/ask ${route} ${text}`, prompt: text, route };
+  },
+};
+
+/** specs/008 contracts/routes-dialog.md § 1 — the routes dialog (or a text table in -p). */
+const routes: SlashCommand = {
+  name: 'routes',
+  description: 'Configurar as rotas por modelo (chat, github, infra e cada comando).',
+  run(ctl) {
+    if (!ctl.interactive) {
+      ctl.notice(routesTableText(ctl.routeEntries()), 'info');
+      return;
+    }
+    ctl.setup.openRoutes();
+  },
+};
+
+/** `nome  provedor / modelo  origem  disponibilidade` for every known route. */
+export function routesTableText(entries: readonly RouteEntry[]): string {
+  const lines = ['Rotas por modelo:'];
+  const w = Math.max(10, ...entries.map((e) => e.name.length));
+  for (const e of entries) {
+    const target = `${e.resolved.provider} / ${e.resolved.model}${e.resolved.effort ? ` · ${e.resolved.effort}` : ''}`;
+    const origin =
+      e.origin === 'default'
+        ? `padrão (segue ${e.follows === 'active' ? 'o ativo' : 'chat'})`
+        : e.origin;
+    const flags = [
+      e.available ? '' : 'indisponível',
+      e.missingCommand ? 'comando ausente' : '',
+      e.alias === 'collides' ? 'atalho em colisão' : '',
+    ].filter(Boolean);
+    lines.push(
+      `  ${e.name.padEnd(w)}  ${target.padEnd(36)}  ${origin}${flags.length ? `  · ${flags.join(' · ')}` : ''}`,
+    );
+  }
+  return lines.join('\n');
+}
 
 /** specs/007 contracts/mouse-selection.md § 5 — mouse tracking (wheel + selection) for this session. */
 const mouse: SlashCommand = {
@@ -217,6 +282,8 @@ export const DEFAULT_COMMANDS: SlashCommand[] = [
   help,
   auth,
   model,
+  routes,
+  ask,
   approvalMode,
   mouse,
   clear,
@@ -230,6 +297,8 @@ export interface SlashOutcome {
   turn?: PromptTurn;
   /** The command refused to run (missing prerequisites); `-p` exits with the usage code. */
   blocked?: boolean;
+  /** The command that ran (name and kind), for route resolution (specs/008). */
+  command?: Pick<SlashCommand, 'name' | 'kind'>;
 }
 
 /** Thrown by a command that cannot run yet; the message is shown as a warning. */
@@ -249,9 +318,10 @@ export async function executeSlash(input: string, ctl: SessionController): Promi
     ctl.notice(`Unknown command: /${parsed.name}. Type /help.`, 'warn');
     return { handled: true, blocked: true };
   }
+  const command = { name: cmd.name, kind: cmd.kind };
   try {
     const turn = await cmd.run(ctl, parsed.args, parsed.rest);
-    return turn ? { handled: true, turn } : { handled: true };
+    return turn ? { handled: true, turn, command } : { handled: true, command };
   } catch (err) {
     if (err instanceof CommandBlocked) {
       ctl.notice(err.message, 'warn');

@@ -1,4 +1,10 @@
-import type { ContentPart, ModelProvider, ProviderEvent, StopReason } from '../providers/types.js';
+import type {
+  ContentPart,
+  ModelProvider,
+  ProviderEvent,
+  ProviderRequest,
+  StopReason,
+} from '../providers/types.js';
 import { classifyAction, needsConfirmation } from '../tools/approval.js';
 import type { ApprovalMode } from '../tools/approval.js';
 import type {
@@ -40,6 +46,11 @@ export interface TurnOptions {
    */
   intercept?: (tool: ToolDefinition, input: unknown) => Promise<ToolResult | undefined>;
   maxToolIterations?: number;
+  /** Model of the route for this turn (specs/008); defaults to `session.modelOverride`. */
+  model?: string;
+  overrides?: ProviderRequest['overrides'];
+  /** Route name recorded on the assistant messages (absent = chat). */
+  route?: string;
 }
 
 export interface TurnResult {
@@ -195,6 +206,8 @@ export async function runTurn(
   const maxIter = opts.maxToolIterations ?? MAX_TOOL_ITERATIONS;
   let iterations = 0;
   let fullText = '';
+  // Route model (specs/008) or the session override (--model / `/model claude x`).
+  const model = opts.model ?? session.modelOverride;
 
   try {
     for (;;) {
@@ -203,7 +216,8 @@ export async function runTurn(
           messages: [...session.history],
           system: opts.system,
           tools: opts.tools,
-          model: session.modelOverride,
+          model,
+          overrides: opts.overrides,
           signal: ac.signal,
         }),
         cb,
@@ -216,7 +230,8 @@ export async function runTurn(
           session.pushAssistant(
             [{ type: 'text', text: collected.text }],
             provider.id,
-            session.modelOverride,
+            model,
+            opts.route,
           );
         cb.onError?.(collected.error);
         return {
@@ -233,7 +248,7 @@ export async function runTurn(
 
       if (collected.stop === 'tool_use' && collected.toolCalls.length > 0) {
         for (const tc of collected.toolCalls) parts.push({ type: 'tool_call', ...tc });
-        session.pushAssistant(parts, provider.id, session.modelOverride);
+        session.pushAssistant(parts, provider.id, model, opts.route);
 
         iterations += 1;
         const results: Array<{ callId: string; output: string; isError: boolean }> = [];
@@ -262,7 +277,7 @@ export async function runTurn(
       }
 
       // Terminal stop reasons
-      session.pushAssistant(parts, provider.id, session.modelOverride);
+      session.pushAssistant(parts, provider.id, model, opts.route);
       switch (collected.stop) {
         case 'max_tokens':
           cb.onNotice?.('response truncated (max_tokens reached)', 'warn');

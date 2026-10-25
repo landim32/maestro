@@ -114,6 +114,15 @@ describe('qwen provider — streaming', () => {
     expect(mock.calls[0]?.options.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it('route overrides apply maxTokens only (effort is Anthropic-only; specs/008)', async () => {
+    mock.scriptCompletions([{ chunks: [chunk({ content: 'ok' }, 'stop')] }]);
+    const p = createQwenProvider(makeCtx(qwenCfg));
+    await drain(p.stream(req({ overrides: { maxTokens: 777, effort: 'high' } })));
+    const params = mock.calls[0]?.params as Record<string, unknown>;
+    expect(params['max_tokens']).toBe(777);
+    expect(params).not.toHaveProperty('output_config');
+  });
+
   it('accumulates tool call fragments by index and emits tool_call + done tool_use', async () => {
     mock.scriptCompletions([
       {

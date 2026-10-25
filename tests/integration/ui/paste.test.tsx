@@ -219,7 +219,10 @@ describe('US4 — images for providers that accept them (contracts/attachments.m
         { type: 'done', stopReason: 'end_turn' },
       ],
     ]);
-    (ui.controller as unknown as { provider?: unknown }).provider = plain;
+    (ui.controller as unknown as { providers: Map<string, unknown> }).providers.set(
+      'claude',
+      plain,
+    );
     ui.stdin.write(KEYS.enter);
     await waitForFrame(ui, 'sem imagem');
     expect(userParts(plain).some((p) => p.type === 'image')).toBe(false);

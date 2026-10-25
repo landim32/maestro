@@ -11,6 +11,8 @@ export interface ParsedArgs {
   prompt?: string;
   provider?: ProviderId;
   model?: string;
+  /** `--route` (specs/008): forced route for a `-p` request. */
+  route?: string;
   config?: string;
   tools: boolean;
   color: boolean;
@@ -43,6 +45,10 @@ function build(argv: string[]) {
       describe: 'Provider to use for this run (overrides settings.activeProvider).',
     })
     .option('model', { type: 'string', describe: 'Model name for this run.' })
+    .option('route', {
+      type: 'string',
+      describe: 'Route (provider/model) for this -p request, e.g. github or speckit.plan.',
+    })
     .option('config', { type: 'string', describe: 'Path to the global settings.json.' })
     .option('tools', {
       type: 'boolean',
@@ -116,6 +122,7 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
     prompt: parsed.prompt,
     provider: parsed.provider as ProviderId | undefined,
     model: parsed.model,
+    route: parsed.route,
     config: parsed.config,
     tools: parsed.tools,
     color: parsed.color,

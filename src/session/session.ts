@@ -62,7 +62,12 @@ export class Session extends EventEmitter<SessionEvents> {
     return true;
   }
 
-  pushAssistant(parts: ContentPart[], providerId: ProviderId, model?: string): void {
+  pushAssistant(
+    parts: ContentPart[],
+    providerId: ProviderId,
+    model?: string,
+    route?: string,
+  ): void {
     if (parts.length === 0) return;
     this.history.push({
       id: randomUUID(),
@@ -71,6 +76,7 @@ export class Session extends EventEmitter<SessionEvents> {
       createdAt: new Date(),
       providerId,
       model,
+      ...(route ? { route } : {}),
     });
     this.changed();
   }

@@ -21,11 +21,18 @@ import type { AskUserFlowState, AskUserKey } from '../setup/askUserFlow.js';
 import { formatError, MaestroError } from '../utils/errors.js';
 import { noopLogger } from '../utils/logger.js';
 import type { Logger } from '../utils/logger.js';
-import { PROVIDER_IDS } from '../config/schema.js';
+import { PROVIDER_IDS, routesOf } from '../config/schema.js';
 import { loadSettings } from '../config/loader.js';
 import type { CredentialSource } from '../config/loader.js';
-import type { Settings } from '../config/schema.js';
-import { readRawSettings, writeSettings as writeSettingsFile } from '../config/writer.js';
+import type { RoutesSettings, RouteTarget, Settings } from '../config/schema.js';
+import {
+  projectOverrides,
+  readRawSettings,
+  writeSettings as writeSettingsFile,
+} from '../config/writer.js';
+import { aliasCommands, guidanceFor, routeEntries } from '../routes/catalog.js';
+import type { RouteEntry } from '../routes/catalog.js';
+import { fallbackText, resolveRoute } from '../routes/resolve.js';
 import type { SettingsPatchEntry, WriteResult } from '../config/writer.js';
 import { learnModelPatch, modelCatalog } from '../config/models.js';
 import type { DialogState } from '../setup/dialog.js';
@@ -128,7 +135,11 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   private readonly settingsWriter?: (patch: SettingsPatchEntry[]) => WriteResult;
   private readonly settingsLoader?: () => LoadedSettingsLike;
   private readonly setupDeps: Partial<SetupDeps>;
-  private provider?: ModelProvider;
+  private readonly providers = new Map<ProviderId, ModelProvider>();
+  /** Built-in + Spec Kit commands, without the route shortcuts (recomputed by refreshCommands). */
+  private baseCommands: SlashCommand[];
+  /** `chat` route unavailable: warned once per session (contracts/route-resolution.md § 2). */
+  private chatWarned = false;
   private noticeSeq = 0;
   private setupDriver?: SetupDriver;
 
@@ -153,6 +164,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   readonly chips = new ChipRegistry();
   /** Live mouse tracking state (initial: `ui.mouse`); `/mouse` toggles it for the session. */
   mouseEnabled: boolean;
+  /** Route of the turn being generated when it is not `chat` (status bar, specs/008). */
+  currentRoute?: string;
 
   constructor(opts: ControllerOptions) {
     super();
@@ -168,7 +181,11 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.env = opts.env ?? opts.ctx.env ?? process.env;
     this.settingsPaths = opts.settingsPaths;
     this.specKit = opts.specKit;
-    this.commands = [...(opts.commands ?? DEFAULT_COMMANDS), ...(opts.specKit?.commands() ?? [])];
+    this.baseCommands = [
+      ...(opts.commands ?? DEFAULT_COMMANDS),
+      ...(opts.specKit?.commands() ?? []),
+    ];
+    this.commands = this.baseCommands;
     if (this.specKit) {
       this.specKit.onStep = (step, result) => {
         if (result.ok) this.notice(`⚙ speckit ${step}  ·  ${result.summary}`, 'info');
@@ -182,6 +199,27 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.setupDeps = opts.setupDeps ?? {};
     this.history = opts.history;
     this.session.on('change', () => this.emit('change'));
+    this.commands = this.withRouteAliases(this.baseCommands);
+  }
+
+  /** Adds `/<route>` shortcuts for purpose routes that do not collide with a command (specs/008). */
+  private withRouteAliases(base: SlashCommand[]): SlashCommand[] {
+    const entries = routeEntries({
+      routes: routesOf(this.ctx.settings),
+      commands: base,
+      statuses: this.statuses(),
+      active: { provider: this.session.activeProviderId, model: this.activeModel },
+    });
+    const aliases = aliasCommands(
+      entries,
+      base.flatMap((c) => [c.name, ...(c.aliases ?? [])]),
+      (ctl, route) =>
+        (ctl as SessionController).notice(
+          `Uso: /${route} <pedido> (atalho de /ask ${route}).`,
+          'warn',
+        ),
+    );
+    return [...base, ...aliases];
   }
 
   /** Read-only view of the provider context (settings, credential sources, active id). */
@@ -194,11 +232,41 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   }
 
   get activeProvider(): ModelProvider {
-    if (!this.provider) {
-      const id = this.session.activeProviderId;
-      this.provider = this.providerOverride?.(id) ?? createProvider(id, this.ctx);
+    return this.providerFor(this.session.activeProviderId);
+  }
+
+  /** Provider instance by id (one per session; rebuilt after settings changes). Routes use it (specs/008). */
+  providerFor(id: ProviderId): ModelProvider {
+    let p = this.providers.get(id);
+    if (!p) {
+      p = this.providerOverride?.(id) ?? createProvider(id, this.ctx);
+      this.providers.set(id, p);
     }
-    return this.provider;
+    return p;
+  }
+
+  /** Routes as the UI and the commands see them (contracts/routes-config.md § 2). */
+  routeEntries(): RouteEntry[] {
+    let rawGlobal: RoutesSettings | undefined;
+    let projectKeys: string[] | undefined;
+    if (this.settingsPaths) {
+      try {
+        const raw = readRawSettings(this.settingsPaths.globalPath)['routes'];
+        rawGlobal = routesOf({ routes: (raw ?? {}) as Record<string, string | RouteTarget> });
+        const names = Object.keys(this.ctx.settings.routes).map((n) => ['routes', n]);
+        projectKeys = projectOverrides(names, this.settingsPaths.cwd);
+      } catch {
+        /* unreadable file: origins fall back to global */
+      }
+    }
+    return routeEntries({
+      routes: routesOf(this.ctx.settings),
+      commands: this.commands,
+      statuses: this.statuses(),
+      active: { provider: this.session.activeProviderId, model: this.activeModel },
+      rawGlobal,
+      projectKeys,
+    });
   }
 
   get activeModel(): string {
@@ -207,11 +275,16 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     );
   }
 
-  /** Re-reads the Spec Kit command files (after /speckit.init). */
+  /** Re-reads the Spec Kit command files (after /speckit.init) and the route shortcuts. */
   refreshCommands(): void {
-    if (!this.specKit) return;
-    this.specKit.refresh();
-    this.commands = [...this.commands.filter((c) => !c.origin), ...this.specKit.commands()];
+    if (this.specKit) {
+      this.specKit.refresh();
+      this.baseCommands = [
+        ...this.baseCommands.filter((c) => !c.origin),
+        ...this.specKit.commands(),
+      ];
+    }
+    this.commands = this.withRouteAliases(this.baseCommands);
     this.emit('change');
   }
 
@@ -329,7 +402,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       }
       throw err;
     }
-    this.provider = undefined;
+    this.providers.clear();
     this.ctx.activeId = id;
     this.notice(`Switched to ${id} / ${this.activeModel}. Conversation history preserved.`, 'info');
     return true;
@@ -367,7 +440,9 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       settings: loaded.settings,
       credentialSources: loaded.credentialSources,
     };
-    this.provider = undefined;
+    this.providers.clear();
+    // Route shortcuts depend on settings.routes (specs/008).
+    this.commands = this.withRouteAliases(this.baseCommands);
     this.emit('change');
   }
 
@@ -501,6 +576,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     opts: {
       confirm?: (a: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
       onDelta?: (text: string) => void;
+      /** Forced route for this request (`-p --route`; specs/008). */
+      route?: string;
     } = {},
   ): Promise<TurnResult | undefined> {
     if (this.dialog) {
@@ -528,9 +605,27 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     const text = slash.turn ? slash.turn.prompt : expanded;
     const display = slash.turn ? slash.turn.display : submission?.display;
     let parts = submission?.parts ?? [];
-    if (parts.length > 0 && !this.activeProvider.capabilities?.images) {
+    // Route of this turn (specs/008 contracts/route-resolution.md): forced → command → chat → active.
+    const entries = this.routeEntries();
+    const resolved = resolveRoute({
+      forced: slash.turn?.route ?? opts.route,
+      command: slash.command?.kind === 'prompt' ? slash.command.name : undefined,
+      routes: routesOf(this.ctx.settings),
+      statuses: this.statuses(),
+      active: { provider: this.session.activeProviderId, model: this.activeModel },
+      known: entries.filter((e) => !e.missingCommand).map((e) => e.name),
+    });
+    for (const fb of resolved.fallbacks) {
+      if (fb.route === 'chat') {
+        if (this.chatWarned) continue;
+        this.chatWarned = true;
+      }
+      this.notice(fallbackText(fb, resolved.via !== 'active'), 'warn');
+    }
+    const provider = this.providerFor(resolved.target.provider);
+    if (parts.length > 0 && !provider.capabilities?.images) {
       this.notice(
-        `O provedor ${this.activeProvider.id} não aceita imagens; ${parts.length === 1 ? 'a imagem foi descartada' : 'as imagens foram descartadas'}.`,
+        `O provedor ${provider.id} não aceita imagens; ${parts.length === 1 ? 'a imagem foi descartada' : 'as imagens foram descartadas'}.`,
         'warn',
       );
       parts = [];
@@ -538,24 +633,42 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     if (!this.session.pushUser(text, display, parts)) return undefined;
 
     this.partialText = '';
-    const provider = this.activeProvider;
+    const route = resolved.route === 'chat' ? undefined : resolved.route;
+    this.currentRoute = route;
+    this.logger.log('route.resolve', {
+      route: resolved.route,
+      provider: resolved.target.provider,
+      model: resolved.target.model,
+      via: resolved.via,
+      fallbacks: resolved.fallbacks,
+    });
     this.logger.log('turn.start', {
       provider: provider.id,
-      model: this.activeModel,
+      model: resolved.target.model,
+      route: resolved.route,
       messages: this.session.history.length,
       tools: this.tools.map((t) => t.name),
     });
     const startedAt = Date.now();
     let autoNoted = false; // onAutoApproved already announced the tool; skip the plain ⚙ line
+    const guidance = guidanceFor(route);
+    const overrides =
+      resolved.target.effort !== undefined || resolved.target.maxTokens !== undefined
+        ? { effort: resolved.target.effort, maxTokens: resolved.target.maxTokens }
+        : undefined;
     const result = await runTurn(
       this.session,
       provider,
       {
-        system: this.system,
+        system: guidance ? `${this.system}\n\n${guidance}` : this.system,
         tools: this.tools,
         toolSettings: this.ctx.settings.tools,
         approvalMode: () => this.approvalMode,
         intercept: this.specKit?.intercept,
+        // On the default chat the request looks exactly as before (no explicit model).
+        model: resolved.via === 'active' ? this.session.modelOverride : resolved.target.model,
+        overrides,
+        route,
       },
       {
         onDelta: (t) => {
@@ -599,6 +712,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       },
     );
     this.partialText = '';
+    this.currentRoute = undefined;
     this.lastUsage = result.usage;
     if (result.stopReason !== 'error') this.ctx.unverified?.delete(provider.id);
     this.logger.log('turn.end', {

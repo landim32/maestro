@@ -48,6 +48,10 @@ describe('Session', () => {
       providerId: 'qwen',
       model: 'qwen3-coder-plus',
     });
+    expect(s.history[0]).not.toHaveProperty('route');
+    // specs/008: the route that produced the reply
+    s.pushAssistant([{ type: 'text', text: 'hi' }], 'claude', 'claude-opus-5-5', 'github');
+    expect(s.history[1]).toMatchObject({ route: 'github' });
   });
 
   it('records tool results as a single tool message', () => {

@@ -176,13 +176,16 @@ export async function* streamAnthropicProtocol(
   o: AnthropicStreamOptions,
 ): AsyncIterable<ProviderEvent> {
   const { client, req, providerId } = o;
+  // Route adjustments (specs/008) win over the provider settings.
+  const maxTokens = req.overrides?.maxTokens ?? o.maxTokens;
+  const effort = o.effort === undefined ? undefined : (req.overrides?.effort ?? o.effort);
   const params = {
     model: o.model,
-    max_tokens: o.maxTokens,
+    max_tokens: maxTokens,
     system: req.system,
     messages: toAnthropicMessages(req.messages),
     tools: req.tools.length ? toAnthropicTools(req.tools) : undefined,
-    ...(o.effort ? { output_config: { effort: o.effort } } : {}),
+    ...(effort ? { output_config: { effort } } : {}),
   };
 
   const stream = o.fallbacks

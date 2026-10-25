@@ -70,8 +70,18 @@ const MessageItem = memo(
     if (message.role === 'assistant') {
       const text = textOf(message);
       const calls = message.content.filter((p) => p.type === 'tool_call');
+      // Replies from a route other than chat are labelled (specs/008 contracts/route-resolution.md § 4).
+      const routeLine =
+        message.route && message.route !== 'chat'
+          ? `⇢ ${message.route} · ${message.providerId ?? '?'}${message.model ? ` / ${message.model}` : ''}`
+          : undefined;
       return (
         <Box flexDirection="column">
+          {routeLine && (
+            <Text color={color ? 'magenta' : undefined} dimColor={!color}>
+              {routeLine}
+            </Text>
+          )}
           {text !== '' && (
             <AssistantBody text={text} width={width} color={color} streaming={false} />
           )}

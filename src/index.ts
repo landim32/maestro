@@ -135,8 +135,19 @@ async function main(argv: string[]): Promise<number> {
   });
 
   if (nonInteractive) {
+    // --route must name a known route (specs/008 contracts/route-resolution.md § 2).
+    if (args.route !== undefined) {
+      const entries = controller.routeEntries();
+      if (!entries.some((e) => e.name === args.route && !e.missingCommand)) {
+        const { routeNamesText } = await import('./routes/catalog.js');
+        process.stderr.write(
+          `maestro: rota desconhecida '${args.route}'. Rotas: ${routeNamesText(entries)}\n`,
+        );
+        return EXIT.USAGE;
+      }
+    }
     const { runNonInteractive } = await import('./cli/nonInteractive.js');
-    return runNonInteractive({ controller, prompt: args.prompt! });
+    return runNonInteractive({ controller, prompt: args.prompt!, route: args.route });
   }
 
   if (projectContext?.file === 'CLAUDE.md') {

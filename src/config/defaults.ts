@@ -109,6 +109,10 @@ export const INITIAL_SETTINGS = {
       'createBranch: /speckit.specify creates and checks out the feature branch (git repos only).',
     createBranch: true,
   },
+  routes: {
+    _comment:
+      'routes.<name>: { provider, model, effort?, maxTokens? }. chat follows the active provider; every command (e.g. speckit.plan) follows chat; github and infra are purpose routes (/ask github ...). Edit with /routes.',
+  },
 };
 
 export function initialSettingsJson(): string {

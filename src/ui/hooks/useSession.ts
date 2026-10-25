@@ -46,5 +46,7 @@ export function useSession(controller: SessionController) {
     /** specs/007: live mouse state (/mouse) and whether image attachments are accepted. */
     mouseEnabled: controller.mouseEnabled,
     imagesOk,
+    /** specs/008: route of the turn being generated (undefined = chat). */
+    currentRoute: controller.currentRoute,
   };
 }

@@ -8,7 +8,16 @@ import { formatZodIssues, settingsSchema } from './schema.js';
 export interface SettingsPatchEntry {
   /** Dotted path, e.g. `providers.qwen.apiKey`. `value === undefined` removes the key. */
   path: string;
+  /** Explicit segments when a key itself contains dots (route names, specs/008): `['routes', 'speckit.plan']`. */
+  segments?: string[];
   value: unknown;
+}
+
+/** Key path of a patch entry or of a dotted string; a string[] is taken as given. */
+export function pathSegments(p: string | string[] | SettingsPatchEntry): string[] {
+  if (Array.isArray(p)) return p;
+  if (typeof p === 'string') return p.split('.').filter(Boolean);
+  return p.segments ?? p.path.split('.').filter(Boolean);
 }
 
 export interface WriteSettingsOptions {
@@ -62,7 +71,7 @@ function normalizeValue(key: string, value: unknown): unknown {
 export function applyPatch(raw: Json, patch: SettingsPatchEntry[]): Json {
   const out = structuredClone(raw);
   for (const entry of patch) {
-    const segments = entry.path.split('.').filter(Boolean);
+    const segments = pathSegments(entry);
     if (segments.length === 0) continue;
     const last = segments[segments.length - 1]!;
     const value = normalizeValue(last, entry.value);
@@ -85,8 +94,11 @@ export function applyPatch(raw: Json, patch: SettingsPatchEntry[]): Json {
   return out;
 }
 
-/** Keys of `paths` that the project-level settings file defines (and therefore overrides). */
-export function projectOverrides(paths: string[], cwd: string): string[] {
+/**
+ * Keys of `paths` that the project-level settings file defines (and therefore overrides).
+ * A `string[]` entry names a key whose segments may contain dots; the result joins it with `.`.
+ */
+export function projectOverrides(paths: Array<string | string[]>, cwd: string): string[] {
   const file = projectSettingsPath(cwd);
   if (!fs.existsSync(file)) return [];
   let project: Json;
@@ -97,14 +109,20 @@ export function projectOverrides(paths: string[], cwd: string): string[] {
   } catch {
     return [];
   }
-  return paths.filter((p) => {
+  const out: string[] = [];
+  for (const p of paths) {
     let cursor: unknown = project;
-    for (const seg of p.split('.')) {
-      if (!isPlainObject(cursor) || !(seg in cursor)) return false;
+    let found = true;
+    for (const seg of pathSegments(p)) {
+      if (!isPlainObject(cursor) || !(seg in cursor)) {
+        found = false;
+        break;
+      }
       cursor = cursor[seg];
     }
-    return true;
-  });
+    if (found) out.push(Array.isArray(p) ? p.join('.') : p);
+  }
+  return out;
 }
 
 /**
@@ -161,7 +179,7 @@ export function writeSettings(
 
   const overriddenByProject = opts.cwd
     ? projectOverrides(
-        patch.map((p) => p.path),
+        patch.map((p) => p.segments ?? p.path),
         opts.cwd,
       )
     : [];

@@ -67,6 +67,15 @@ describe('claude provider — status()', () => {
     expect(none.missing).toEqual(['credentials']);
     expect(none.hint).toMatch(/ant auth login/);
   });
+  it('route overrides replace maxTokens and effort for one request (specs/008)', async () => {
+    mock.scriptStreams([{ events: [] }]);
+    const p = createClaudeProvider(makeCtx());
+    await drain(p.stream(req({ overrides: { maxTokens: 2048, effort: 'high' } })));
+    expect(mock.calls[0]?.params).toMatchObject({
+      max_tokens: 2048,
+      output_config: { effort: 'high' },
+    });
+  });
   it('declares image support (specs/007 research R9)', () => {
     expect(createClaudeProvider(makeCtx()).capabilities).toEqual({ images: true });
   });

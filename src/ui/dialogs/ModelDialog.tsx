@@ -19,7 +19,7 @@ export interface ModelDialogProps {
 export const CUSTOM_MODEL_LABEL = 'Digitar outro modelo…';
 export const NOT_CONFIGURED = 'não configurado — configure com /auth';
 
-function credentialLabel(
+export function credentialLabel(
   configured: boolean,
   source: CredentialSource,
   maskedKey: string | undefined,
