@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import { approvalModeInfo } from '../../tools/approval.js';
 import type { PendingToolAction } from '../../tools/types.js';
+import { DiffView } from './DiffView.js';
 
 export interface ConfirmationDialogProps {
   action: Omit<PendingToolAction, 'resolve'>;
@@ -32,15 +33,22 @@ export function ConfirmationDialog({
       </Text>
       {action.reason && <Text color={c('yellow')}>Confirmação exigida: {action.reason}</Text>}
       <Box flexDirection="column" marginTop={1}>
-        {shown.map((l, i) => (
-          <Text
-            key={i}
-            color={l.startsWith('+') ? c('green') : l.startsWith('-') ? c('red') : undefined}
-          >
-            {l}
-          </Text>
-        ))}
-        {hidden > 0 && <Text dimColor>… {hidden} more lines</Text>}
+        {action.diff ? (
+          // specs/009 US3: structured diff with line numbers and context.
+          <DiffView diff={action.diff} color={color} maxLines={maxLines} header="dialog" />
+        ) : (
+          <>
+            {shown.map((l, i) => (
+              <Text
+                key={i}
+                color={l.startsWith('+') ? c('green') : l.startsWith('-') ? c('red') : undefined}
+              >
+                {l}
+              </Text>
+            ))}
+            {hidden > 0 && <Text dimColor>… {hidden} more lines</Text>}
+          </>
+        )}
       </Box>
       <Box marginTop={1}>
         <Text>

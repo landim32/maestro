@@ -107,7 +107,8 @@ describe('contract: route → request (contracts/route-resolution.md § 3–4)',
     });
     await ctl.submit('/speckit.plan x');
     expect(providers.claude.requests).toHaveLength(1);
-    expect(ctl.notices.at(-1)?.text).toBe(
+    // the last notice is the turn summary (specs/009); the fallback warning comes before it
+    expect(ctl.notices.filter((n) => n.level === 'warn').at(-1)?.text).toBe(
       'Rota speckit.plan indisponível (provedor qwen desabilitado); usando o provedor ativo.',
     );
     const chatOff = make({

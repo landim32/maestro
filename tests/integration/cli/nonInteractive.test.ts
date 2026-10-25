@@ -354,3 +354,37 @@ describe('non-interactive mode (-p)', () => {
     expect(stderr.text()).toMatch(/empty prompt/);
   });
 });
+
+describe('non-interactive mode keeps its output (specs/009 SC-007, contracts/transcript.md § 5)', () => {
+  it('stdout is only the answer; ⚙ progress stays on stderr; no ✻ summary, ⏺ or ⎿', async () => {
+    const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-p-009-'));
+    try {
+      fs.writeFileSync(path.join(cwd, 'notes.txt'), 'olá\n');
+      const provider = createFakeProvider([
+        [
+          { type: 'tool_call', callId: 'c1', name: 'read_file', input: { path: 'notes.txt' } },
+          { type: 'done', stopReason: 'tool_use' },
+        ],
+        [
+          { type: 'text_delta', text: 'O arquivo diz olá.' },
+          { type: 'usage', inputTokens: 3, outputTokens: 5 },
+          { type: 'done', stopReason: 'end_turn' },
+        ],
+      ]);
+      const { controller, stdout, stderr } = make(provider, allTools(), { cwd });
+      const code = await runNonInteractive({
+        controller,
+        prompt: 'o que diz notes.txt?',
+        stdout,
+        stderr,
+        handleSignals: false,
+      });
+      expect(code).toBe(0);
+      expect(stdout.text()).toBe('O arquivo diz olá.\n');
+      expect(stderr.text()).toBe('⚙ read_file notes.txt\n');
+      expect(stdout.text() + stderr.text()).not.toMatch(/✻|⏺|⎿/);
+    } finally {
+      fs.rmSync(cwd, { recursive: true, force: true });
+    }
+  });
+});

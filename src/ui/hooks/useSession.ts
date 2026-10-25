@@ -48,5 +48,8 @@ export function useSession(controller: SessionController) {
     imagesOk,
     /** specs/008: route of the turn being generated (undefined = chat). */
     currentRoute: controller.currentRoute,
+    /** specs/009: activity of the turn in progress (undefined when idle) and the clock it uses. */
+    activity: controller.activity,
+    clock: controller.clock,
   };
 }

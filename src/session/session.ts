@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { ContentPart, Message, ProviderId } from '../providers/types.js';
-import type { PendingQuestion, PendingToolAction } from '../tools/types.js';
+import type { PendingQuestion, PendingToolAction, ToolResultDisplay } from '../tools/types.js';
 
 export type SessionState = 'idle' | 'generating' | 'awaiting_confirmation' | 'awaiting_answer';
 
@@ -81,7 +81,14 @@ export class Session extends EventEmitter<SessionEvents> {
     this.changed();
   }
 
-  pushToolResults(results: Array<{ callId: string; output: string; isError: boolean }>): void {
+  pushToolResults(
+    results: Array<{
+      callId: string;
+      output: string;
+      isError: boolean;
+      display?: ToolResultDisplay;
+    }>,
+  ): void {
     if (results.length === 0) return;
     this.history.push({
       id: randomUUID(),

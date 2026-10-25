@@ -47,6 +47,9 @@ import { SessionBusyError } from './session.js';
 import { runTurn } from './turn.js';
 import type { TurnResult } from './turn.js';
 import { ChipRegistry } from '../ui/chips.js';
+import { toolLabel } from '../ui/toolDisplay.js';
+import { activityReducer, formatSummary, initialActivity, summarize } from './activity.js';
+import type { Activity, ActivityEvent } from './activity.js';
 import type { ContentPart } from '../providers/types.js';
 
 export type NoticeLevel = 'info' | 'warn' | 'error';
@@ -107,6 +110,9 @@ export interface ControllerOptions {
   history?: InputHistory;
   /** Native Spec Kit host (commands, script interception); absent → no /speckit.* commands. */
   specKit?: SpecKitService;
+  /** Test seams for the activity line (specs/009): clock and the waiting-phrase draw. */
+  clock?: () => number;
+  random?: () => number;
 }
 
 /** In interactive mode the UI answers through controller.confirm(); the promise itself never settles. */
@@ -146,6 +152,10 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   partialText = '';
   notices: Notice[] = [];
   lastUsage = { inputTokens: 0, outputTokens: 0 };
+  /** Activity of the turn in progress (specs/009 US1); undefined when idle. */
+  activity?: Activity;
+  readonly clock: () => number;
+  private readonly random: () => number;
   /** Open modal dialog (/auth, /model), if any. */
   dialog?: DialogState;
   /**
@@ -188,8 +198,11 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.commands = this.baseCommands;
     if (this.specKit) {
       this.specKit.onStep = (step, result) => {
-        if (result.ok) this.notice(`⚙ speckit ${step}  ·  ${result.summary}`, 'info');
-        else this.notice(`⚠ speckit ${step}: ${firstLine(result.output)}`, 'warn');
+        // Interactive: the transcript shows `⏺ Speckit(step)` (specs/009 contracts/transcript.md § 4).
+        if (!this.interactive) {
+          if (result.ok) this.notice(`⚙ speckit ${step}  ·  ${result.summary}`, 'info');
+          else this.notice(`⚠ speckit ${step}: ${firstLine(result.output)}`, 'warn');
+        }
         for (const w of result.warnings ?? []) this.notice(`  ${w}`, 'warn');
       };
     }
@@ -198,7 +211,21 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.settingsLoader = opts.settingsLoader;
     this.setupDeps = opts.setupDeps ?? {};
     this.history = opts.history;
-    this.session.on('change', () => this.emit('change'));
+    this.clock = opts.clock ?? Date.now;
+    this.random = opts.random ?? Math.random;
+    this.session.on('change', () => {
+      // Confirmation / question phases follow the session state (specs/009 contracts/activity-line.md § 2).
+      if (this.activity) {
+        const st = this.session.state;
+        let next = activityReducer(this.activity, {
+          type: 'confirm',
+          pending: st === 'awaiting_confirmation',
+        });
+        next = activityReducer(next, { type: 'question', pending: st === 'awaiting_answer' });
+        this.activity = next;
+      }
+      this.emit('change');
+    });
     this.commands = this.withRouteAliases(this.baseCommands);
   }
 
@@ -650,6 +677,14 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       tools: this.tools.map((t) => t.name),
     });
     const startedAt = Date.now();
+    // Activity line (specs/009 US1): starts before the first token, fed by the turn callbacks.
+    this.activity = initialActivity(this.clock(), this.random);
+    const feed = (e: ActivityEvent) => {
+      if (this.activity) this.activity = activityReducer(this.activity, e);
+    };
+    // In the interactive session the transcript shows each tool call (`⏺ Label(arg)` + `⎿ …`);
+    // the `⚙` notices remain for `-p`, where they go to stderr (contracts/transcript.md § 4–5).
+    const toolNotices = !this.interactive;
     let autoNoted = false; // onAutoApproved already announced the tool; skip the plain ⚙ line
     const guidance = guidanceFor(route);
     const overrides =
@@ -673,7 +708,12 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       {
         onDelta: (t) => {
           this.partialText += t;
+          feed({ type: 'delta', chars: t.length });
           opts.onDelta?.(t);
+          this.emit('change');
+        },
+        onUsage: (input, output) => {
+          feed({ type: 'usage', input, output });
           this.emit('change');
         },
         onNotice: (text, level) => this.notice(text, level),
@@ -690,6 +730,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
         onAutoApproved: (name, input, summary, mode) => {
           autoNoted = true;
           this.logger.log('approval.auto', { tool: name, mode });
+          if (!toolNotices) return;
           const target = summarizeInput(input);
           this.notice(
             `⚙ ${name}${target ? ` ${target}` : ''}  ·  ${summary}  ·  auto (${approvalModeInfo(mode).label})`,
@@ -697,15 +738,19 @@ export class SessionController extends EventEmitter<ControllerEvents> {
           );
         },
         onToolStart: (name, input) => {
+          feed({ type: 'toolStart', label: toolLabel(name, input) });
+          this.emit('change');
           if (autoNoted) {
             autoNoted = false;
             return;
           }
-          this.notice(`⚙ ${name} ${summarizeInput(input)}`, 'info');
+          if (toolNotices) this.notice(`⚙ ${name} ${summarizeInput(input)}`, 'info');
         },
         onToolEnd: (name, r) => {
-          if (r.isError) this.notice(`⚠ ${name}: ${firstLine(r.output)}`, 'warn');
+          feed({ type: 'toolEnd' });
+          if (r.isError && toolNotices) this.notice(`⚠ ${name}: ${firstLine(r.output)}`, 'warn');
           this.partialText = '';
+          this.emit('change');
         },
         confirm: opts.confirm ?? (this.interactive ? waitForUi : undefined),
         ask: this.interactive ? this.askUser : undefined,
@@ -715,6 +760,15 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.currentRoute = undefined;
     this.lastUsage = result.usage;
     if (result.stopReason !== 'error') this.ctx.unverified?.delete(provider.id);
+    // Turn summary (contracts/activity-line.md § 4); `-p` keeps its stderr as before.
+    const summary = this.activity
+      ? summarize(this.activity, {
+          at: this.clock(),
+          cancelled: result.stopReason === 'cancelled',
+        })
+      : undefined;
+    this.activity = undefined;
+    if (summary && this.interactive) this.notice(formatSummary(summary), 'info');
     this.logger.log('turn.end', {
       provider: provider.id,
       stopReason: result.stopReason,
@@ -722,6 +776,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       usage: result.usage,
       toolIterations: result.toolIterations,
       chars: result.text.length,
+      outTokensShown: summary?.outTokens,
+      approximate: summary?.approximate,
     });
     this.emit('change');
     return result;

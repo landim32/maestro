@@ -24,6 +24,11 @@ describe('read_file', () => {
     expect(r.isError).toBe(false);
     expect(r.output).toBe('f.txt (4 lines)\n1\tline1\n2\tline2\n3\tline3\n4\tline4');
   });
+  it('does not count the empty string after a final newline as a line', async () => {
+    fs.writeFileSync(path.join(cwd, 'nl.txt'), 'um\ndois\ntrês\n');
+    const r = await readFileTool.run({ path: 'nl.txt' }, ctx);
+    expect(r.output).toBe('nl.txt (3 lines)\n1\tum\n2\tdois\n3\ttrês');
+  });
   it('supports offset and limit', async () => {
     const r = await readFileTool.run({ path: 'f.txt', offset: 2, limit: 2 }, ctx);
     expect(r.output).toBe('f.txt (4 lines, showing 2-3)\n2\tline2\n3\tline3');

@@ -126,7 +126,12 @@ describe('provider-driven turn', () => {
       });
       expect(asked).toEqual(['write_file']);
       expect(fs.existsSync(path.join(cwd, file))).toBe(approve);
-      if (!approve) expect(p.results[0]).toEqual({ output: 'user declined', isError: true });
+      if (!approve) expect(p.results[0]).toMatchObject({ output: 'user declined', isError: true });
+      // specs/009: display metadata reaches the history (decline, or the diff taken before the write)
+      const recorded = s.history.find((m) => m.role === 'tool')?.content[0];
+      if (approve)
+        expect(recorded?.type === 'tool_result' && recorded.display?.diff?.kind).toBe('new');
+      else expect(recorded?.type === 'tool_result' && recorded.display).toEqual({ declined: true });
     }
   });
 
@@ -145,6 +150,39 @@ describe('provider-driven turn', () => {
     });
     expect(auto).toEqual(['write_file']);
     expect(fs.readFileSync(path.join(cwd, 'a.txt'), 'utf8')).toBe('x');
+    // specs/009: the mode that released the action is recorded for the transcript
+    const recorded = s.history.find((m) => m.role === 'tool')?.content[0];
+    expect(recorded?.type === 'tool_result' && recorded.display).toMatchObject({
+      autoMode: 'auto-edit',
+      diff: { kind: 'new', added: 1 },
+    });
+  });
+
+  it('display returned by intercept reaches the history (Spec Kit step)', async () => {
+    const s = new Session({ cwd, activeProviderId: 'claude-code' });
+    const p = drivenProvider([
+      {
+        call: {
+          callId: 'k',
+          name: 'run_command',
+          input: { command: '.specify/scripts/bash/x.sh' },
+        },
+      },
+    ]);
+    s.pushUser('/speckit');
+    await runTurn(s, p, {
+      ...opts('default'),
+      intercept: async () => ({
+        output: '{}',
+        isError: false,
+        display: { speckitStep: 'setup-plan', summary: 'plano criado' },
+      }),
+    });
+    const recorded = s.history.find((m) => m.role === 'tool')?.content[0];
+    expect(recorded?.type === 'tool_result' && recorded.display).toEqual({
+      speckitStep: 'setup-plan',
+      summary: 'plano criado',
+    });
   });
 
   it('paths outside the working directory are refused in every mode', async () => {

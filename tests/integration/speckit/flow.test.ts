@@ -132,16 +132,20 @@ describe('Spec Kit flow in a new project (US3)', { timeout: 60_000 }, () => {
       expect(status).toContain('✓ plan.md');
       expect(status).toContain('✓ tasks.md');
       expect(status).toContain('project: 10');
-      // every script went through the native interceptor
-      const steps = controller.notices
-        .filter((n) => n.text.startsWith('⚙ speckit'))
-        .map((n) => n.text.split('  ·')[0]);
+      // every script went through the native interceptor; interactive sessions record it in the
+      // tool result display (`⏺ Speckit(step)`, specs/009) instead of a `⚙ speckit` notice
+      const steps = controller.session.history.flatMap((m) =>
+        m.content.flatMap((p) =>
+          p.type === 'tool_result' && p.display?.speckitStep ? [p.display.speckitStep] : [],
+        ),
+      );
       expect(steps).toEqual([
-        '⚙ speckit create-feature',
-        '⚙ speckit setup-plan',
-        '⚙ speckit update-agent-context',
-        '⚙ speckit setup-tasks',
+        'create-feature',
+        'setup-plan',
+        'update-agent-context',
+        'setup-tasks',
       ]);
+      expect(controller.notices.some((n) => n.text.startsWith('⚙ speckit'))).toBe(false);
     } finally {
       fresh.cleanup();
     }
@@ -198,8 +202,12 @@ describe('Spec Kit flow (US1)', { timeout: 60_000 }, () => {
     expect(user.content[0]?.type === 'text' && user.content[0].text).toContain(
       'Maestro: how this Spec Kit command runs here',
     );
-    expect(controller.notices.map((n) => n.text).join('\n')).toMatch(
-      /⚙ speckit create-feature {2}· {2}001-user-auth · branch criada/,
+    // the step summary is shown under `⏺ Speckit(create-feature)` (specs/009 contracts/transcript.md § 2)
+    const stepResult = session.history
+      .flatMap((m) => m.content)
+      .find((p) => p.type === 'tool_result' && p.display?.speckitStep === 'create-feature');
+    expect(stepResult?.type === 'tool_result' && stepResult.display?.summary).toMatch(
+      /001-user-auth · branch criada/,
     );
 
     const r2 = await controller.submit('/speckit.plan', { confirm });
@@ -208,9 +216,11 @@ describe('Spec Kit flow (US1)', { timeout: 60_000 }, () => {
     expect(repo.exists('CLAUDE.md')).toBe(true);
     expect(repo.exists('MAESTRO.md')).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
-    expect(controller.notices.map((n) => n.text).join('\n')).toMatch(
-      /⚙ speckit update-agent-context/,
-    );
+    expect(
+      session.history
+        .flatMap((m) => m.content)
+        .some((p) => p.type === 'tool_result' && p.display?.speckitStep === 'update-agent-context'),
+    ).toBe(true);
   });
 
   it('blocks a command whose prerequisites are missing without calling the model (FR-005)', async () => {

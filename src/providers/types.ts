@@ -1,7 +1,7 @@
 import type { Settings } from '../config/schema.js';
 import type { CredentialSource } from '../config/loader.js';
 import type { MaestroError } from '../utils/errors.js';
-import type { ToolDefinition } from '../tools/types.js';
+import type { ToolDefinition, ToolResultDisplay } from '../tools/types.js';
 
 export type { ProviderId } from '../config/schema.js';
 import type { Effort, ProviderId } from '../config/schema.js';
@@ -13,7 +13,14 @@ export type ContentPart =
   /** Base64 image attached by the user (specs/007); only providers with `capabilities.images` receive it. */
   | { type: 'image'; mediaType: string; data: string; name?: string }
   | { type: 'tool_call'; callId: string; name: string; input: unknown }
-  | { type: 'tool_result'; callId: string; output: string; isError: boolean };
+  | {
+      type: 'tool_result';
+      callId: string;
+      output: string;
+      isError: boolean;
+      /** Display only (specs/009); never sent to the model. */
+      display?: ToolResultDisplay;
+    };
 
 export interface Message {
   id: string;

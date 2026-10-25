@@ -17,6 +17,7 @@ import { MessageList } from './components/MessageList.js';
 import { InputPrompt } from './components/InputPrompt.js';
 import { StatusBar } from './components/StatusBar.js';
 import { ConfirmationDialog } from './components/ConfirmationDialog.js';
+import { ActivityLine } from './components/ActivityLine.js';
 import { Transcript } from './components/Transcript.js';
 import { AskUserDialog } from './dialogs/AskUserDialog.js';
 import { DialogHost } from './dialogs/DialogHost.js';
@@ -229,6 +230,14 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
           color={caps.color}
           onInput={onQuestionInput}
           rows={caps.rows}
+        />
+      )}
+      {snap.activity && !dialog && (
+        <ActivityLine
+          activity={snap.activity}
+          width={Math.max(1, caps.columns - 2)}
+          color={caps.color}
+          clock={snap.clock}
         />
       )}
       <InputPrompt

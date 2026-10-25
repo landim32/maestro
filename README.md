@@ -169,6 +169,16 @@ Na sessão:
 | `y` / `n`                                | Aprova / recusa uma escrita de arquivo ou comando                                                                                           |
 | ↑↓ / 1-9 · Espaço · Enter · Esc          | No diálogo de pergunta (`ask_user`): navegar / escolher · marcar (múltipla) · confirmar · não responder                                     |
 
+### Exibição da conversa
+
+A conversa segue o formato do Claude Code:
+
+- **Linha de atividade.** Enquanto o modelo trabalha, uma linha acima do prompt mostra um símbolo animado, uma frase, o tempo e os tokens recebidos, por exemplo `✻ Contemplando… (13s · ↓ 304 tokens · Esc para interromper)`. A frase muda para `Executando Bash…`, `Aguardando sua confirmação…` ou `Aguardando sua resposta…` conforme o que está acontecendo. Os tokens com `~` são uma estimativa a partir do texto, trocada pelo valor real quando o provedor o informa. No fim, a conversa guarda um resumo como `✻ 13s · ↓ 304 tokens`, ou `✻ interrompido · …` depois de um Esc.
+- **Transcrição.** Cada resposta começa com `⏺`. Cada ferramenta aparece como `⏺ Read(src/index.ts)`, `⏺ List(src)`, `⏺ Write(a.txt)`, `⏺ Bash(npm test)` (`Cmd(…)` no Windows) ou `⏺ Speckit(setup-plan)`, e o resultado vem logo abaixo, depois de `⎿`. Os resumos são `Leu 120 linhas`, `14 itens`, as primeiras linhas da saída de um comando com `… +N linhas`, o erro completo em vermelho, `recusado pelo usuário` ou `· auto (<modo>)` quando o modo de aprovação liberou a ação.
+- **Diff de escrita.** O diálogo de confirmação e a transcrição mostram o mesmo diff, com caminho, `+A −R`, números de linha, 3 linhas de contexto, adições em verde e remoções em vermelho. Arquivo novo, escrita sem mudança, troca só de fim de linha (CRLF ↔ LF) e conteúdo binário ou grande têm resumos próprios.
+
+No modo `-p` nada disso muda: o stdout continua sendo só a resposta, e o progresso (`⚙ read_file …`) vai para o stderr.
+
 ### Modos de aprovação
 
 Como no qwen-code, o Maestro tem quatro níveis de autonomia para as ações do modelo. A barra de status mostra o modo em vigor; **Shift+Tab** avança no ciclo (a barra mostra "(Shift+Tab para trocar)" ao lado do modo). A troca vale só para a sessão; o modo inicial vem de `--approval-mode`, `--yolo` ou `tools.approvalMode` no `settings.json`.
@@ -265,4 +275,5 @@ O Maestro é software livre sob a [licença MIT](./LICENSE). É e continuará se
 - [qwen-code](https://github.com/QwenLM/qwen-code) (Qwen Team, Alibaba; Apache-2.0): os modos de aprovação e a ferramenta `ask_user` foram adaptados de lá (identificadores e ciclo dos modos, esquema e formato de resposta da pergunta, teclas do diálogo, cores do indicador). Os arquivos adaptados trazem o cabeçalho de atribuição.
 - [gemini-cli](https://github.com/google-gemini/gemini-cli) (Google LLC; Apache-2.0): projeto do qual o qwen-code deriva.
 - [spec-kit](https://github.com/github/spec-kit) (GitHub; MIT): os templates, prompts de comando e scripts do Spec Kit v1.2.3 vêm embutidos em `assets/speckit/`; três prompts foram adaptados ao Maestro (listados em `assets/speckit/NOTICE`).
-- [Claude Code](https://claude.com/claude-code): inspiração para a experiência de uso (histórico ↑/↓, prompt, atalhos); nenhum código foi copiado.
+- [Claude Code](https://claude.com/claude-code): inspiração para a experiência de uso (histórico ↑/↓, prompt, atalhos, linha de atividade, transcrição com `⏺`/`⎿` e diff de escrita); nenhum código foi copiado.
+- [OpenClaude](https://github.com/Twigpine/openclaude): referência do comportamento visual da exibição da conversa (linha de atividade, transcrição e diff). Como o projeto se declara derivado do código do Claude Code, ele foi usado só como referência do que é visível; nenhum código dele foi incorporado.
