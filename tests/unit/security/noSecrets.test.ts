@@ -42,6 +42,8 @@ describe('no secrets leak — /auth dialog', () => {
       const globalPath = path.join(home, '.maestro', 'settings.json');
       const logPath = path.join(tmp, 'debug.log');
       const logger = createLogger({ enabled: true, filePath: logPath, secrets: [QWEN_KEY] });
+      const { fileHistoryStore, InputHistory } = await import('../../../src/session/history.js');
+      const historyFile = path.join(home, '.maestro', 'history.jsonl');
       const ui = mountApp({
         columns: 100,
         rows: 30,
@@ -51,6 +53,7 @@ describe('no secrets leak — /auth dialog', () => {
           env: {},
           logger,
           debug: true,
+          history: new InputHistory(fileHistoryStore(historyFile, logger)),
           setupDeps: {
             testConnection: async () => ({ ok: true, latencyMs: 1 }),
             ant: fakeAntCli(),
@@ -88,6 +91,79 @@ describe('no secrets leak — /auth dialog', () => {
         expect(log).not.toContain(QWEN_KEY);
         // the key is stored only in settings.json itself
         expect(fs.readFileSync(globalPath, 'utf8')).toContain(QWEN_KEY);
+        // dialog fields never reach the input history; the command itself does (contracts/history.md § 2)
+        const history = fs.readFileSync(historyFile, 'utf8');
+        expect(history).toContain('/auth qwen');
+        expect(history).not.toContain(QWEN_KEY);
+      } finally {
+        cleanupSized();
+      }
+    },
+  );
+});
+
+describe('no secrets leak — ask_user free text', () => {
+  it(
+    'text typed in "Outro…" reaches the model only; never history.jsonl nor the debug log (FR-018)',
+    { timeout: 30_000 },
+    async () => {
+      const { mountApp, KEYS, toolCall, answer } = await import('../../helpers/appHarness.js');
+      const { waitForFrame, cleanupSized, tick } = await import('../../helpers/renderSized.js');
+      const { allTools } = await import('../../../src/tools/registry.js');
+      const { fileHistoryStore, InputHistory } = await import('../../../src/session/history.js');
+      const SECRET = 'segredo-xyz-9876';
+      const logPath = path.join(tmp, 'debug.log');
+      const historyFile = path.join(tmp, 'history.jsonl');
+      const logger = createLogger({ enabled: true, filePath: logPath, secrets: [] });
+      const ui = mountApp({
+        columns: 100,
+        rows: 32,
+        events: [
+          toolCall('q1', 'ask_user', {
+            questions: [
+              {
+                question: 'Qual token?',
+                header: 'Token',
+                options: [
+                  { label: 'nenhum', description: 'sem token' },
+                  { label: 'padrão', description: 'o padrão' },
+                ],
+              },
+            ],
+          }),
+          answer('recebido'),
+        ],
+        controller: {
+          tools: allTools(),
+          logger,
+          debug: true,
+          history: new InputHistory(fileHistoryStore(historyFile, logger)),
+        },
+      });
+      try {
+        await waitForFrame(ui, 'Type a message');
+        ui.stdin.write('pergunte o token');
+        await tick();
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'Pergunta 1 de 1 · [Token]');
+        ui.stdin.write(KEYS.up); // Outro…
+        await waitForFrame(ui, 'Digite sua resposta');
+        ui.stdin.write(SECRET);
+        await tick();
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'recebido');
+        // the model got it
+        const toolMsg = ui.provider.requests[1]?.messages.at(-1);
+        expect(JSON.stringify(toolMsg?.content)).toContain(SECRET);
+        // the history has the prompt but not the dialog text
+        const history = fs.readFileSync(historyFile, 'utf8');
+        expect(history).toContain('pergunte o token');
+        expect(history).not.toContain(SECRET);
+        // the log records counts only
+        const log = fs.readFileSync(logPath, 'utf8');
+        expect(log).toMatch(/ask_user\.answered/);
+        expect(log).toContain('"other":1');
+        expect(log).not.toContain(SECRET);
       } finally {
         cleanupSized();
       }

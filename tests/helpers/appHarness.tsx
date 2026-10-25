@@ -12,6 +12,8 @@ import type { RenderSizedOptions } from './renderSized.js';
 
 export interface HarnessOptions extends RenderSizedOptions {
   provider?: FakeProvider;
+  /** Scripted provider events per request (shortcut for `provider: createFakeProvider(events)`). */
+  events?: ProviderEvent[][];
   /** Provider per id (for /model switching tests). */
   providers?: Partial<Record<ProviderId, ModelProvider>>;
   ui?: { altScreen: boolean; mouse: boolean; color?: boolean };
@@ -23,7 +25,11 @@ export interface HarnessOptions extends RenderSizedOptions {
 
 /** Renders the real App with fake providers in a sized fake terminal. */
 export function mountApp(opts: HarnessOptions = {}) {
-  const provider = opts.provider ?? textProvider(['Hello from fake', 'Second answer']);
+  const provider =
+    opts.provider ??
+    (opts.events
+      ? createFakeProvider(opts.events)
+      : textProvider(['Hello from fake', 'Second answer']));
   const session = new Session({ cwd: 'C:\\work\\demo', activeProviderId: 'claude' });
   const ctx = makeCtx(opts.settings ?? {}, { ...opts.credentials, env: opts.env ?? {} });
   const controller = new SessionController({
@@ -64,7 +70,22 @@ export function linesProvider(n: number, opts: { delayMs?: number; perDelta?: nu
   return createFakeProvider(() => events, { delayMs: opts.delayMs });
 }
 
+/** One provider turn that calls a tool (the loop then sends the result back). */
+export const toolCall = (callId: string, name: string, input: unknown): ProviderEvent[] => [
+  { type: 'tool_call', callId, name, input },
+  { type: 'done', stopReason: 'tool_use' },
+];
+/** One provider turn that answers with text. */
+export const answer = (text: string): ProviderEvent[] => [
+  { type: 'text_delta', text },
+  { type: 'done', stopReason: 'end_turn' },
+];
+
 export const KEYS = {
+  tab: '\t',
+  shiftTab: '\x1b[Z',
+  space: ' ',
+  digit: (n: number) => String(n),
   pageUp: '\x1b[5~',
   pageDown: '\x1b[6~',
   home: '\x1b[H',

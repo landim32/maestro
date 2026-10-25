@@ -1,9 +1,9 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import type { ContentPart, Message, ProviderId } from '../providers/types.js';
-import type { PendingToolAction } from '../tools/types.js';
+import type { PendingQuestion, PendingToolAction } from '../tools/types.js';
 
-export type SessionState = 'idle' | 'generating' | 'awaiting_confirmation';
+export type SessionState = 'idle' | 'generating' | 'awaiting_confirmation' | 'awaiting_answer';
 
 export class SessionBusyError extends Error {
   constructor(action: string) {
@@ -30,6 +30,8 @@ export class Session extends EventEmitter<SessionEvents> {
   history: Message[] = [];
   state: SessionState = 'idle';
   pendingConfirmation?: PendingToolAction;
+  /** `ask_user` waiting for the UI (contracts/ask-user.md). At most one of the two pendings is set. */
+  pendingQuestion?: PendingQuestion;
   abortController?: AbortController;
 
   constructor(init: SessionInit) {
@@ -103,6 +105,11 @@ export class Session extends EventEmitter<SessionEvents> {
     this.setState(action ? 'awaiting_confirmation' : 'generating');
   }
 
+  setPendingQuestion(question: PendingQuestion | undefined): void {
+    this.pendingQuestion = question;
+    this.setState(question ? 'awaiting_answer' : 'generating');
+  }
+
   beginGeneration(): AbortController {
     this.abortController = new AbortController();
     this.setState('generating');
@@ -112,10 +119,17 @@ export class Session extends EventEmitter<SessionEvents> {
   endGeneration(): void {
     this.abortController = undefined;
     this.pendingConfirmation = undefined;
+    this.pendingQuestion = undefined;
     this.setState('idle');
   }
 
+  /** Aborts the turn; a pending question is answered as "declined" so the tool can finish. */
   cancel(): void {
+    const question = this.pendingQuestion;
+    if (question) {
+      this.pendingQuestion = undefined;
+      question.resolve({ answered: false });
+    }
     this.abortController?.abort();
   }
 }

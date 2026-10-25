@@ -2,6 +2,7 @@ import { useRef, useState } from 'react';
 import { useInput } from 'ink';
 import type { Key } from 'ink';
 import type { SessionState } from '../../session/session.js';
+import type { AskUserKey } from '../../setup/askUserFlow.js';
 import type { DialogKey } from '../../setup/dialog.js';
 import { isMouseSequence } from './useMouseWheel.js';
 import type { ViewportActions } from './useViewport.js';
@@ -15,6 +16,10 @@ export interface KeyboardHandlers {
   /** When a modal dialog is open, navigation keys are routed here instead. */
   dialogOpen?: boolean;
   onDialogKey?: (key: DialogKey) => void;
+  /** Tab (+1) / Shift+Tab (−1) cycle the approval mode (contracts/approval-modes.md § 2). */
+  onCycleMode?: (dir: 1 | -1) => void;
+  /** Keys for the ask_user dialog while `state === 'awaiting_answer'` (contracts/ask-user.md § 3). */
+  onQuestionKey?: (key: AskUserKey) => void;
   armWindowMs?: number;
 }
 
@@ -31,8 +36,10 @@ export function isScrollKey(key: Key): boolean {
 
 /**
  * Global shortcuts: Esc / Ctrl+C cancel, Ctrl+C twice exits, y/n answer confirmations,
- * PageUp/PageDown/Home/End/Shift+↑↓ scroll the transcript. With a dialog open, ↑/↓/Enter/Esc
- * go to the dialog (contracts/dialog-flows.md § 1); Ctrl+C twice still exits.
+ * PageUp/PageDown/Home/End/Shift+↑↓ scroll the transcript, Tab / Shift+Tab cycle the approval
+ * mode (also while a confirmation is pending — the pending action keeps waiting). With a dialog
+ * open, ↑/↓/Enter/Esc go to the dialog (contracts/dialog-flows.md § 1) and Tab is ignored;
+ * Ctrl+C twice still exits.
  */
 export function useKeyboard({
   state,
@@ -42,6 +49,8 @@ export function useKeyboard({
   viewport,
   dialogOpen = false,
   onDialogKey,
+  onCycleMode,
+  onQuestionKey,
   armWindowMs = 2000,
 }: KeyboardHandlers) {
   const [exitArmed, setExitArmed] = useState(false);
@@ -81,6 +90,11 @@ export function useKeyboard({
       return;
     }
 
+    if (key.tab) {
+      onCycleMode?.(key.shift ? -1 : 1);
+      return;
+    }
+
     if (viewport && isScrollKey(key)) {
       if (key.pageUp) viewport.pageUp();
       else if (key.pageDown) viewport.pageDown();
@@ -103,6 +117,24 @@ export function useKeyboard({
         onConfirm(false);
         onCancel();
       }
+      return;
+    }
+    if (state === 'awaiting_answer') {
+      // Esc declines the question only; Ctrl+C declines it and cancels the response (twice exits).
+      if (ctrlC) {
+        if (!armExit()) {
+          onQuestionKey?.({ type: 'cancel' });
+          onCancel();
+        }
+        return;
+      }
+      if (key.escape) onQuestionKey?.({ type: 'cancel' });
+      else if (key.return) onQuestionKey?.({ type: 'enter' });
+      else if (key.upArrow) onQuestionKey?.({ type: 'up' });
+      else if (key.downArrow) onQuestionKey?.({ type: 'down' });
+      else if (input === ' ') onQuestionKey?.({ type: 'space' });
+      else if (/^[1-9]$/.test(input)) onQuestionKey?.({ type: 'digit', n: Number(input) });
+      // other characters belong to the "Outro…" TextField
       return;
     }
     if (ctrlC) armExit();

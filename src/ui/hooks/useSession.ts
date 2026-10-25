@@ -22,8 +22,12 @@ export function useSession(controller: SessionController) {
     providerId: s.activeProviderId,
     model: controller.activeModel,
     usage: controller.lastUsage,
-    userInputs: s.history
-      .filter((m) => m.role === 'user')
-      .map((m) => m.content.map((p) => (p.type === 'text' ? p.text : '')).join('')),
+    /** Persistent input history for ↑/↓ (oldest first) — contracts/history.md. */
+    historyItems: controller.history?.entries ?? [],
+    /** Live approval mode and the short-lived status message (contracts/approval-modes.md). */
+    approvalMode: controller.approvalMode,
+    transient: controller.transient,
+    /** ask_user dialog state while awaiting_answer (contracts/ask-user.md). */
+    question: controller.questionFlow,
   };
 }

@@ -1,50 +1,79 @@
-# [PROJECT_NAME] Constitution
-<!-- Example: Spec Constitution, TaskFlow Constitution, etc. -->
+# Maestro Constitution
+
+Princípios que toda feature do Maestro deve respeitar. O `/speckit.plan` avalia cada plano contra
+eles na seção "Constitution Check"; violações precisam de justificativa explícita em
+"Complexity Tracking".
 
 ## Core Principles
 
-### [PRINCIPLE_1_NAME]
-<!-- Example: I. Library-First -->
-[PRINCIPLE_1_DESCRIPTION]
-<!-- Example: Every feature starts as a standalone library; Libraries must be self-contained, independently testable, documented; Clear purpose required - no organizational-only libraries -->
+### I. Simplicidade (YAGNI)
 
-### [PRINCIPLE_2_NAME]
-<!-- Example: II. CLI Interface -->
-[PRINCIPLE_2_DESCRIPTION]
-<!-- Example: Every library exposes functionality via CLI; Text in/out protocol: stdin/args → stdout, errors → stderr; Support JSON + human-readable formats -->
+Cada feature entrega o que a spec pede e nada além. Sem dependências novas quando o stack atual
+resolve; sem abstrações para um único uso; sem configuração para o que tem um padrão óbvio.
+Alternativas mais complexas são registradas em `research.md` como "consideradas e rejeitadas".
 
-### [PRINCIPLE_3_NAME]
-<!-- Example: III. Test-First (NON-NEGOTIABLE) -->
-[PRINCIPLE_3_DESCRIPTION]
-<!-- Example: TDD mandatory: Tests written → User approved → Tests fail → Then implement; Red-Green-Refactor cycle strictly enforced -->
+### II. CLI com entrada e saída em texto
 
-### [PRINCIPLE_4_NAME]
-<!-- Example: IV. Integration Testing -->
-[PRINCIPLE_4_DESCRIPTION]
-<!-- Example: Focus areas requiring integration tests: New library contract tests, Contract changes, Inter-service communication, Shared schemas -->
+Tudo que funciona na sessão interativa precisa de um equivalente textual: o modo `-p` recebe o
+prompt por argumento ou stdin, escreve a resposta em stdout e avisos/erros em stderr, e sai com
+os códigos documentados. Nenhuma funcionalidade pode exigir o TTY para ser usada em scripts.
 
-### [PRINCIPLE_5_NAME]
-<!-- Example: V. Observability, VI. Versioning & Breaking Changes, VII. Simplicity -->
-[PRINCIPLE_5_DESCRIPTION]
-<!-- Example: Text I/O ensures debuggability; Structured logging required; Or: MAJOR.MINOR.BUILD format; Or: Start simple, YAGNI principles -->
+### III. Testabilidade
 
-## [SECTION_2_NAME]
-<!-- Example: Additional Constraints, Security Requirements, Performance Standards, etc. -->
+Lógica de fluxo é escrita como reducers puros; efeitos (rede, disco, processos, UI) ficam atrás
+de interfaces injetáveis. Nenhum teste acessa a rede: os SDKs são mockados. Testes de UI usam o
+terminal falso dimensionado e esperam por frames, nunca por tempos fixos. Toda feature chega
+com testes unitários, de contrato e de integração que fixam seus contratos.
 
-[SECTION_2_CONTENT]
-<!-- Example: Technology stack requirements, compliance standards, deployment policies, etc. -->
+### IV. Segurança de credenciais
 
-## [SECTION_3_NAME]
-<!-- Example: Development Workflow, Review Process, Quality Gates, etc. -->
+Chaves nunca aparecem em tela, transcrição, histórico de entradas ou logs; só os últimos quatro
+caracteres via `mask()`. Entradas de diálogo não entram no histórico. Logs registram caminhos
+de configuração e contadores, nunca valores. Erros de SDK são saneados antes de cruzar a
+fronteira do provedor. Um teste em `tests/unit/security/` garante cada uma dessas regras.
 
-[SECTION_3_CONTENT]
-<!-- Example: Code review requirements, testing gates, deployment approval process, etc. -->
+### V. Observabilidade mínima
+
+`--debug` grava um log estruturado (`~/.maestro/debug.log`) com eventos nomeados e dados
+suficientes para diagnosticar — sem conteúdo do usuário. Mensagens de erro ao usuário são
+claras, em português, e apontam o que fazer.
+
+### VI. Open-source permanente
+
+O Maestro é software livre sob a licença MIT e assim permanecerá. O pacote nunca é marcado como
+privado, o manifesto declara a licença, e o repositório público em
+https://github.com/landim32/maestro é a fonte canônica. Mudanças de licença só para outra licença
+permissiva equivalente, por emenda desta constituição.
+
+### VII. Atribuição de terceiros
+
+Todo código copiado ou adaptado de outro projeto traz, nas primeiras linhas do arquivo, a
+origem (projeto, caminho, commit), o aviso de copyright original, a licença (SPDX) e a indicação
+de que foi modificado para o Maestro; e ganha uma entrada em `THIRD_PARTY_NOTICES.md`, que
+reproduz as licenças exigidas. Só entra código sob licenças compatíveis com a MIT. Um teste
+(`tests/unit/license/attribution.test.ts`) falha se um arquivo listado perder o cabeçalho ou se
+um cabeçalho aparecer fora da lista.
+
+## Restrições
+
+- TypeScript 5.9, Node.js ≥ 22, ESM com extensões `.js` explícitas; Ink 8 + React 19 na UI; zod 4
+  para validação; vitest para testes.
+- Núcleo agnóstico de provedor: só `src/providers/<id>.ts` importa SDKs.
+- Ferramentas confinam escritas e comandos à pasta de trabalho, independentemente do modo de
+  aprovação.
+- Versão derivada do GitVersion (commits `fix:`/`feat:`/`major:`); nunca codificada.
+
+## Fluxo de desenvolvimento
+
+Spec Kit: `/speckit.specify` → `/speckit.plan` → `/speckit.tasks` → `/speckit.implement`, uma
+branch por feature (`NNN-nome`), PR para `main`. Antes do merge: `typecheck`, `lint`,
+`format:check`, `test` e `build` verdes; quickstart executado manualmente.
 
 ## Governance
-<!-- Example: Constitution supersedes all other practices; Amendments require documentation, approval, migration plan -->
 
-[GOVERNANCE_RULES]
-<!-- Example: All PRs/reviews must verify compliance; Complexity must be justified; Use [GUIDANCE_FILE] for runtime development guidance -->
+Esta constituição prevalece sobre qualquer outra prática do repositório. Emendas são feitas por
+PR que altera este arquivo, incrementa a versão (semântica: MAJOR para remover/redefinir um
+princípio, MINOR para acrescentar, PATCH para esclarecer) e atualiza a data. Todo plano registra
+a verificação dos princípios; `CLAUDE.md` carrega as regras operacionais derivadas deles.
 
-**Version**: [CONSTITUTION_VERSION] | **Ratified**: [RATIFICATION_DATE] | **Last Amended**: [LAST_AMENDED_DATE]
-<!-- Example: Version: 2.1.1 | Ratified: 2025-06-13 | Last Amended: 2025-07-16 -->
+**Version**: 1.0.0 | **Ratified**: 2026-10-25 | **Last Amended**: 2026-10-25

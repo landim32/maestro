@@ -21,8 +21,8 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
 describe('run_command', () => {
-  it('requires confirmation and previews the command and cwd', async () => {
-    expect(runCommandTool.requiresConfirmation).toBe(true);
+  it('has kind command and previews the command and cwd', async () => {
+    expect(runCommandTool.kind).toBe('command');
     const p = await runCommandTool.preview!({ command: 'node -v' }, ctx);
     expect(p).toContain('$ node -v');
     expect(p).toContain(cwd);

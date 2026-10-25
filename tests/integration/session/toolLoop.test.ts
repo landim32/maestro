@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Session } from '../../../src/session/session.js';
 import { runTurn } from '../../../src/session/turn.js';
 import { allTools } from '../../../src/tools/registry.js';
+import type { ApprovalMode } from '../../../src/tools/approval.js';
+import type { PendingToolAction } from '../../../src/tools/types.js';
 import type { ProviderEvent } from '../../../src/providers/types.js';
 import { createFakeProvider } from '../../helpers/fakeProvider.js';
 import { makeSettings } from '../../helpers/context.js';
@@ -107,6 +109,132 @@ describe('tool loop', () => {
     expect(result?.type === 'tool_result' && result.output).toMatch(
       /not available in non-interactive mode/,
     );
+  });
+
+  /** specs/005 contracts/approval-modes.md § 1, § 4, § 6 */
+  describe('approval modes', () => {
+    const withMode = (mode: ApprovalMode) => ({ ...opts(), approvalMode: () => mode });
+    /** First tool result of the conversation. */
+    const resultOf = (s: Session) => {
+      const part = s.history.find((m) => m.role === 'tool')?.content[0];
+      return part?.type === 'tool_result' ? part : undefined;
+    };
+    type Confirm = (a: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
+
+    it('auto-edit runs write_file without confirm and reports it through onAutoApproved', async () => {
+      const s = new Session({ cwd, activeProviderId: 'claude' });
+      const p = createFakeProvider([
+        toolCall('w1', 'write_file', { path: 'auto.txt', content: 'a\nb' }),
+        answer('done'),
+      ]);
+      s.pushUser('write');
+      const confirm = vi.fn(async () => true);
+      const auto: unknown[][] = [];
+      const r = await runTurn(s, p, withMode('auto-edit'), {
+        confirm,
+        onAutoApproved: (...a) => auto.push(a),
+      });
+      expect(r.stopReason).toBe('end_turn');
+      expect(confirm).not.toHaveBeenCalled();
+      expect(auto).toEqual([
+        [
+          'write_file',
+          { path: 'auto.txt', content: 'a\nb' },
+          'new file: auto.txt (2 lines)',
+          'auto-edit',
+        ],
+      ]);
+      expect(fs.readFileSync(path.join(cwd, 'auto.txt'), 'utf8')).toBe('a\nb');
+    });
+
+    it('auto-edit still asks for commands; auto runs plain commands and asks for destructive ones with a reason', async () => {
+      const plain = toolCall('r1', 'run_command', { command: 'node -v' });
+      const destructive = toolCall('r2', 'run_command', { command: 'rm -rf tmp' });
+
+      let s = new Session({ cwd, activeProviderId: 'claude' });
+      let confirm = vi.fn<Confirm>(async () => false);
+      await runTurn(s, createFakeProvider([plain, answer('x')]), withMode('auto-edit'), {
+        confirm,
+      });
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(confirm.mock.calls[0]?.[0]).toMatchObject({ mode: 'auto-edit', reason: undefined });
+
+      s = new Session({ cwd, activeProviderId: 'claude' });
+      confirm = vi.fn<Confirm>(async () => false);
+      await runTurn(s, createFakeProvider([plain, answer('x')]), withMode('auto'), { confirm });
+      expect(confirm).not.toHaveBeenCalled();
+      expect(resultOf(s)?.output).toMatch(/exit code 0/);
+
+      s = new Session({ cwd, activeProviderId: 'claude' });
+      confirm = vi.fn<Confirm>(async () => false);
+      await runTurn(s, createFakeProvider([destructive, answer('x')]), withMode('auto'), {
+        confirm,
+      });
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(confirm.mock.calls[0]?.[0]).toMatchObject({
+        mode: 'auto',
+        reason: 'remoção recursiva',
+      });
+      expect(resultOf(s)?.output).toBe('user declined');
+    });
+
+    it('yolo never asks; default without confirm reports the mode in the error', async () => {
+      let s = new Session({ cwd, activeProviderId: 'claude' });
+      const confirm = vi.fn(async () => false);
+      await runTurn(
+        s,
+        createFakeProvider([toolCall('r', 'run_command', { command: 'node -v' }), answer('x')]),
+        withMode('yolo'),
+        { confirm },
+      );
+      expect(confirm).not.toHaveBeenCalled();
+      expect(resultOf(s)?.isError).toBe(false);
+
+      s = new Session({ cwd, activeProviderId: 'claude' });
+      await runTurn(
+        s,
+        createFakeProvider([
+          toolCall('w', 'write_file', { path: 'no.txt', content: '' }),
+          answer('x'),
+        ]),
+        withMode('default'),
+      );
+      expect(resultOf(s)?.output).toBe(
+        'confirmation required (default); not available in non-interactive mode',
+      );
+      expect(fs.existsSync(path.join(cwd, 'no.txt'))).toBe(false);
+    });
+
+    it('reads the mode through the getter at every tool call (Tab mid-turn applies to the next call)', async () => {
+      const s = new Session({ cwd, activeProviderId: 'claude' });
+      const p = createFakeProvider([
+        [
+          {
+            type: 'tool_call',
+            callId: 'a',
+            name: 'write_file',
+            input: { path: 'a.txt', content: '1' },
+          },
+          {
+            type: 'tool_call',
+            callId: 'b',
+            name: 'write_file',
+            input: { path: 'b.txt', content: '2' },
+          },
+          { type: 'done', stopReason: 'tool_use' },
+        ],
+        answer('x'),
+      ]);
+      let mode: ApprovalMode = 'default';
+      const confirm = vi.fn(async () => {
+        mode = 'auto-edit'; // user pressed Tab while the first confirmation was pending
+        return false;
+      });
+      await runTurn(s, p, { ...opts(), approvalMode: () => mode }, { confirm });
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(fs.existsSync(path.join(cwd, 'a.txt'))).toBe(false);
+      expect(fs.existsSync(path.join(cwd, 'b.txt'))).toBe(true);
+    });
   });
 
   it('turns invalid tool input and sandbox violations into error results instead of crashing', async () => {

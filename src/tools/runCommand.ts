@@ -32,9 +32,9 @@ export function shellFor(platform: NodeJS.Platform = process.platform): {
 export const runCommandTool: ToolDefinition<RunCommandInput> = {
   name: 'run_command',
   description:
-    'Run a shell command inside the working directory and return its combined output and exit code. The user must approve every command.',
+    'Run a shell command inside the working directory and return its combined output and exit code. May require user approval depending on the approval mode.',
   inputSchema,
-  requiresConfirmation: true,
+  kind: 'command',
   async preview(input, ctx) {
     const dir = input.cwd ? resolveInsideCwd(ctx.cwd, input.cwd) : ctx.cwd;
     return `$ ${input.command}\n(in ${dir}, timeout ${Math.round(ctx.settings.commandTimeoutMs / 1000)}s)`;

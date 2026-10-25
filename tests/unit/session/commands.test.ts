@@ -1,8 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { executeSlash, parseSlash } from '../../../src/session/commands.js';
 import { SessionController } from '../../../src/session/controller.js';
 import { Session } from '../../../src/session/session.js';
-import { makeCtx } from '../../helpers/context.js';
+import { makeCtx, makeSettings } from '../../helpers/context.js';
 import { textProvider } from '../../helpers/fakeProvider.js';
 
 function make() {
@@ -36,6 +36,50 @@ describe('slash commands', () => {
     const text = ctl.notices[0]?.text ?? '';
     for (const c of ['/help', '/clear', '/model', '/exit']) expect(text).toContain(c);
     expect(text).toMatch(/Esc/);
+  });
+
+  /** specs/005 contracts/approval-modes.md § 7 */
+  it('/approval-mode lists, changes and rejects modes; /help mentions Tab and the modes', async () => {
+    const { ctl } = make();
+    await executeSlash('/help', ctl);
+    const help = ctl.notices.at(-1)?.text ?? '';
+    expect(help).toContain('/approval-mode');
+    expect(help).toContain('Tab / Shift+Tab');
+    expect(help).toContain('ask_user');
+    for (const m of ['default', 'auto-edit', 'auto', 'yolo']) expect(help).toContain(m);
+
+    await executeSlash('/approval-mode', ctl);
+    expect(ctl.notices.at(-1)?.text).toContain('Modo de aprovação: Pedir permissão (default)');
+    expect(ctl.notices.at(-1)?.text).toContain('● default');
+
+    await executeSlash('/approval-mode AUTO', ctl);
+    expect(ctl.approvalMode).toBe('auto');
+    expect(ctl.transient?.text).toBe('modo: Automático');
+    expect(ctl.notices.at(-1)?.text).toBe('Modo de aprovação: Automático (auto).');
+
+    await executeSlash('/approval foo', ctl);
+    expect(ctl.notices.at(-1)?.level).toBe('warn');
+    expect(ctl.notices.at(-1)?.text).toBe(
+      "Modo desconhecido 'foo'. Opções: default, auto-edit, auto, yolo.",
+    );
+    expect(ctl.approvalMode).toBe('auto');
+  });
+
+  it('cycleApprovalMode walks the cycle, emits change and a transient; applySettings keeps the session mode', () => {
+    const { ctl } = make();
+    const spy = vi.fn();
+    ctl.on('change', spy);
+    expect(ctl.cycleApprovalMode(1)).toBe('auto-edit');
+    expect(ctl.cycleApprovalMode(-1)).toBe('default');
+    expect(ctl.cycleApprovalMode(-1)).toBe('yolo');
+    expect(spy).toHaveBeenCalledTimes(3);
+    expect(ctl.transient).toEqual({ text: 'modo: YOLO', seq: 3 });
+    ctl.applySettings({
+      settings: makeSettings({ tools: { approvalMode: 'auto' } }),
+      credentialSources: { claude: 'env', qwen: 'none' },
+    });
+    expect(ctl.approvalMode).toBe('yolo');
+    expect(ctl.settings.tools.approvalMode).toBe('auto');
   });
 
   it('/clear empties the history when idle and is rejected while generating', async () => {

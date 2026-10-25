@@ -124,6 +124,8 @@ type AuthFlowEvent =
 
 ## 4. ModelFlowState (`src/setup/modelFlow.ts`)
 
+> **Superseded (2026-10-25)** pela feature 004: a lista passou a ter uma entrada por modelo (`ModelEntry`), ganhou a etapa `customProvider` e o reducer recebe um contexto `{ statuses, settings, activeModel }`. Ver `specs/004-history-model-catalog/data-model.md` § 3. O texto abaixo descreve a versão original.
+
 ```ts
 interface ModelItem {
   providerId: ProviderId;

@@ -61,7 +61,7 @@ exports[`contract: history and tool conversion per provider > Anthropic messages
 ]
 `;
 
-exports[`contract: history and tool conversion per provider > Anthropic tools (all four workspace tools) 1`] = `
+exports[`contract: history and tool conversion per provider > Anthropic tools (all tools incl. ask_user) 1`] = `
 [
   {
     "description": "Read a UTF-8 text file inside the working directory. Returns numbered lines. Use offset/limit for large files.",
@@ -111,7 +111,7 @@ exports[`contract: history and tool conversion per provider > Anthropic tools (a
     "name": "list_directory",
   },
   {
-    "description": "Create or overwrite a text file inside the working directory with the given full content. The user must approve the change.",
+    "description": "Create or overwrite a text file inside the working directory with the given full content. May require user approval depending on the approval mode.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -133,7 +133,7 @@ exports[`contract: history and tool conversion per provider > Anthropic tools (a
     "name": "write_file",
   },
   {
-    "description": "Run a shell command inside the working directory and return its combined output and exit code. The user must approve every command.",
+    "description": "Run a shell command inside the working directory and return its combined output and exit code. May require user approval depending on the approval mode.",
     "input_schema": {
       "additionalProperties": false,
       "properties": {
@@ -153,6 +153,77 @@ exports[`contract: history and tool conversion per provider > Anthropic tools (a
       "type": "object",
     },
     "name": "run_command",
+  },
+  {
+    "description": "Use this tool when you need a decision from the user to continue: choosing an approach, picking a file, confirming an understanding, learning a preference. Do not use it to approve file writes or commands — those are handled by the user's approval mode. Offer concrete, mutually exclusive options with a short description each; the user can always select "Other" to type a free answer. Set multiSelect: true when several answers may apply. If you recommend an option, make it the first one and append "(Recommended)" to its label. Ask at most a few questions per call; the user answers them one at a time and you receive all answers together.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "questions": {
+          "description": "Questions to ask, answered one at a time.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "header": {
+                "description": "Very short label shown as a tag (max 12 chars).",
+                "maxLength": 12,
+                "minLength": 1,
+                "type": "string",
+              },
+              "multiSelect": {
+                "description": "Allow the user to select several options (default false).",
+                "type": "boolean",
+              },
+              "options": {
+                "description": "The choices offered; the user can always pick "Other" and type a free answer.",
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "description": {
+                      "description": "One line explaining what choosing it means.",
+                      "minLength": 1,
+                      "type": "string",
+                    },
+                    "label": {
+                      "description": "Short label of the choice, shown to the user.",
+                      "minLength": 1,
+                      "type": "string",
+                    },
+                  },
+                  "required": [
+                    "label",
+                    "description",
+                  ],
+                  "type": "object",
+                },
+                "maxItems": 4,
+                "minItems": 2,
+                "type": "array",
+              },
+              "question": {
+                "description": "The complete question to ask the user.",
+                "minLength": 1,
+                "type": "string",
+              },
+            },
+            "required": [
+              "question",
+              "header",
+              "options",
+            ],
+            "type": "object",
+          },
+          "maxItems": 4,
+          "minItems": 1,
+          "type": "array",
+        },
+      },
+      "required": [
+        "questions",
+      ],
+      "type": "object",
+    },
+    "name": "ask_user",
   },
 ]
 `;
@@ -206,7 +277,7 @@ exports[`contract: history and tool conversion per provider > OpenAI-compatible 
 ]
 `;
 
-exports[`contract: history and tool conversion per provider > OpenAI-compatible tools (all four workspace tools) 1`] = `
+exports[`contract: history and tool conversion per provider > OpenAI-compatible tools (all tools incl. ask_user) 1`] = `
 [
   {
     "function": {
@@ -263,7 +334,7 @@ exports[`contract: history and tool conversion per provider > OpenAI-compatible 
   },
   {
     "function": {
-      "description": "Create or overwrite a text file inside the working directory with the given full content. The user must approve the change.",
+      "description": "Create or overwrite a text file inside the working directory with the given full content. May require user approval depending on the approval mode.",
       "name": "write_file",
       "parameters": {
         "additionalProperties": false,
@@ -288,7 +359,7 @@ exports[`contract: history and tool conversion per provider > OpenAI-compatible 
   },
   {
     "function": {
-      "description": "Run a shell command inside the working directory and return its combined output and exit code. The user must approve every command.",
+      "description": "Run a shell command inside the working directory and return its combined output and exit code. May require user approval depending on the approval mode.",
       "name": "run_command",
       "parameters": {
         "additionalProperties": false,
@@ -305,6 +376,80 @@ exports[`contract: history and tool conversion per provider > OpenAI-compatible 
         },
         "required": [
           "command",
+        ],
+        "type": "object",
+      },
+    },
+    "type": "function",
+  },
+  {
+    "function": {
+      "description": "Use this tool when you need a decision from the user to continue: choosing an approach, picking a file, confirming an understanding, learning a preference. Do not use it to approve file writes or commands — those are handled by the user's approval mode. Offer concrete, mutually exclusive options with a short description each; the user can always select "Other" to type a free answer. Set multiSelect: true when several answers may apply. If you recommend an option, make it the first one and append "(Recommended)" to its label. Ask at most a few questions per call; the user answers them one at a time and you receive all answers together.",
+      "name": "ask_user",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "questions": {
+            "description": "Questions to ask, answered one at a time.",
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "header": {
+                  "description": "Very short label shown as a tag (max 12 chars).",
+                  "maxLength": 12,
+                  "minLength": 1,
+                  "type": "string",
+                },
+                "multiSelect": {
+                  "description": "Allow the user to select several options (default false).",
+                  "type": "boolean",
+                },
+                "options": {
+                  "description": "The choices offered; the user can always pick "Other" and type a free answer.",
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "description": {
+                        "description": "One line explaining what choosing it means.",
+                        "minLength": 1,
+                        "type": "string",
+                      },
+                      "label": {
+                        "description": "Short label of the choice, shown to the user.",
+                        "minLength": 1,
+                        "type": "string",
+                      },
+                    },
+                    "required": [
+                      "label",
+                      "description",
+                    ],
+                    "type": "object",
+                  },
+                  "maxItems": 4,
+                  "minItems": 2,
+                  "type": "array",
+                },
+                "question": {
+                  "description": "The complete question to ask the user.",
+                  "minLength": 1,
+                  "type": "string",
+                },
+              },
+              "required": [
+                "question",
+                "header",
+                "options",
+              ],
+              "type": "object",
+            },
+            "maxItems": 4,
+            "minItems": 1,
+            "type": "array",
+          },
+        },
+        "required": [
+          "questions",
         ],
         "type": "object",
       },

@@ -1,6 +1,8 @@
 import yargs from 'yargs';
 import { PROVIDER_IDS } from '../config/schema.js';
 import type { ProviderId } from '../config/schema.js';
+import { APPROVAL_MODES, parseApprovalMode } from '../tools/approval.js';
+import type { ApprovalMode } from '../tools/approval.js';
 import { APP_NAME, VERSION } from '../version.js';
 
 export interface ParsedArgs {
@@ -13,6 +15,8 @@ export interface ParsedArgs {
   color: boolean;
   altScreen: boolean;
   debug: boolean;
+  /** `--approval-mode` / `--yolo`; undefined keeps settings.tools.approvalMode. */
+  approvalMode?: ApprovalMode;
   helpText?: string;
 }
 
@@ -53,6 +57,25 @@ function build(argv: string[]) {
       type: 'boolean',
       default: true,
       describe: 'Draw on the alternate screen (--no-altscreen to stay in the main buffer).',
+    })
+    .option('approval-mode', {
+      type: 'string',
+      describe: `Initial approval mode: ${APPROVAL_MODES.join(' | ')} (Tab cycles it in the session).`,
+      coerce: (v: unknown) => {
+        if (v === undefined) return undefined;
+        const mode = parseApprovalMode(String(v));
+        if (!mode) {
+          throw new UsageError(
+            `Invalid --approval-mode '${String(v)}'. Expected one of: ${APPROVAL_MODES.join(', ')}.`,
+          );
+        }
+        return mode;
+      },
+    })
+    .option('yolo', {
+      type: 'boolean',
+      default: false,
+      describe: 'Shortcut for --approval-mode yolo (never ask for confirmation).',
     })
     .option('debug', {
       type: 'boolean',
@@ -97,6 +120,7 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
     color: parsed.color,
     altScreen: parsed.altscreen,
     debug: parsed.debug,
+    approvalMode: parsed.yolo ? 'yolo' : (parsed['approval-mode'] as ApprovalMode | undefined),
   };
 }
 

@@ -1,8 +1,14 @@
 # maestro Development Guidelines
 
-Auto-generated from all feature plans. Last updated: 2026-10-24
+Auto-generated from all feature plans. Last updated: 2026-10-25
 
 ## Active Technologies
+
+- TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `key.tab`/`key.shift`), `zod` 4 (`z.strictObject` + `z.toJSONSchema` para o esquema de `ask_user`), `yargs` (novos argumentos). Nenhuma nova. (005-approval-modes-ask-user)
+- `settings.json` ganha `tools.approvalMode` (lido; a troca por TAB não grava). Novos arquivos de repositório: `THIRD_PARTY_NOTICES.md`; `LICENSE`, `package.json`, `README.md`, `.specify/memory/constitution.md` alterados. (005-approval-modes-ask-user)
+
+- TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput`), `zod` 4 (esquema de `models`), `node:fs` (append/rename). Nenhuma nova. (004-history-model-catalog)
+- novo `~/.maestro/history.jsonl` (JSON Lines, append por envio, ≤ 1.000 entradas); `settings.json` ganha `providers.<id>.models` (gravado via `config/writer.ts`). (004-history-model-catalog)
 
 - TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `isActive`), `@anthropic-ai/sdk` (`models.retrieve` para teste), `openai` (`chat.completions.create` mínimo para teste), `zod` (validação antes de gravar), `node:child_process` (CLI `ant`). Nenhuma nova. (003-auth-provider-setup)
 - `~/.maestro/settings.json` passa a ser **escrito** pelo Maestro (patch por caminho, preservando `_comment`, escrita atômica). (003-auth-provider-setup)
@@ -24,18 +30,19 @@ src/
 ├── cli/                # args.ts, exitCodes.ts, preflight.ts, firstRun.ts, interactive.ts, nonInteractive.ts
 ├── config/             # paths.ts, schema.ts (zod), defaults.ts, loader.ts (args > env > project > global)
 ├── providers/          # types.ts (ModelProvider, ProviderEvent), status.ts, registry.ts, anthropicProtocol.ts (shared Messages-API streaming), claude.ts, qwen.ts (protocol: openai | anthropic), index.ts
-├── session/            # session.ts (state machine), turn.ts (stream + tool loop), commands.ts (/help /clear /model /exit), controller.ts, systemPrompt.ts
-├── tools/              # types.ts, sandbox.ts, readFile.ts, listDirectory.ts, writeFile.ts, runCommand.ts, registry.ts
-├── ui/                 # App.tsx (fixed-height layout), banner.ts, components/{Header,Transcript,ScrollIndicator,Banner,MessageList,InputPrompt,StatusBar,ConfirmationDialog}.tsx
+├── session/            # session.ts (state machine incl. awaiting_answer), turn.ts (stream + tool loop + approval policy), commands.ts (/help /auth /model /approval-mode /clear /exit), controller.ts, systemPrompt.ts, history.ts
+├── tools/              # types.ts (kind, ToolContext.ask), approval.ts (modes, destructive patterns) [qwen-code attrib], askUser.ts [attrib], sandbox.ts, readFile.ts, listDirectory.ts, writeFile.ts, runCommand.ts, registry.ts
+├── ui/                 # App.tsx (fixed-height layout), banner.ts, components/{Header,Transcript,ScrollIndicator,Banner,MessageList,InputPrompt,StatusBar [attrib],ConfirmationDialog}.tsx
 │   ├── markdown/       # parse.ts (remark+gfm), Markdown.tsx, Inline.tsx, CodeBlock.tsx, Table.tsx, highlight.ts (lowlight), theme.ts
-│   ├── dialogs/        # DialogHost, DialogFrame, SelectList, TextField (secret), ProgressView, ResultView, AuthDialog, ModelDialog
-│   └── hooks/          # useSession, useKeyboard (+scroll keys, dialog routing), useViewport (reducer), useMouseWheel (SGR), useTerminalCapabilities
-├── setup/              # methods.ts (catalogue), authFlow.ts + modelFlow.ts (pure reducers), driver.ts (effects), connectionTest.ts, antCli.ts, installHints.ts, dialog.ts
+│   ├── dialogs/        # DialogHost, DialogFrame, SelectList, TextField (secret), ProgressView, ResultView, AuthDialog, ModelDialog, AskUserDialog [attrib]
+│   └── hooks/          # useSession, useKeyboard (+scroll keys, Tab mode cycle, dialog/question routing), useViewport (reducer), useMouseWheel (SGR), useTerminalCapabilities
+├── setup/              # methods.ts (catalogue), authFlow.ts + modelFlow.ts + askUserFlow.ts [attrib] (pure reducers), driver.ts (effects), connectionTest.ts, antCli.ts, installHints.ts, dialog.ts
 ├── config/writer.ts    # patch-by-path, validated, atomic settings.json writes
 └── utils/              # mask.ts, errors.ts (MaestroError), tty.ts, logger.ts
 tests/
-├── unit/ integration/ contract/ helpers/
-specs/001-maestro-cli-mvp/  # spec, plan, research, data-model, contracts, quickstart, tasks
+├── unit/ integration/ contract/ helpers/   # unit/license/attribution.test.ts guards headers + THIRD_PARTY_NOTICES.md
+specs/00N-*/                # spec, plan, research, data-model, contracts, quickstart, tasks per feature
+THIRD_PARTY_NOTICES.md      # qwen-code / gemini-cli notices + Apache-2.0 text (shipped in the tarball with LICENSE)
 ```
 
 ## Commands
@@ -60,14 +67,19 @@ specs/001-maestro-cli-mvp/  # spec, plan, research, data-model, contracts, quick
 - The UI never writes escape sequences itself; only `useMouseWheel` (SGR mouse tracking) and Ink (`alternateScreen`) do. Assistant text is rendered through `ui/markdown/`; user and tool text stays literal; `-p` output stays raw markdown.
 - UI tests use `tests/helpers/renderSized.ts` (sized fake TTY) and `waitFor`/`waitForFrame` instead of fixed sleeps: measurement → dispatch → re-render takes a few frames. Write a tick between typing and Enter (prompt state must update first).
 - Dialog flows (`/auth`, `/model`) are pure reducers in `src/setup/`; side effects (connection test, settings writes, the `ant` process) live only in `SetupDriver` and are injectable (`setupDeps`, `settingsWriter`, `settingsLoader`). Keys enter only through `TextField secret`; logs record setting paths, never values.
+- Input history lives in `src/session/history.ts` (`InputHistory` + injectable `HistoryStore`; pure `historyNavigate` for ↑/↓). The controller records every interactive submit before executing it; dialog `TextField` input and `-p` never reach the history (`noSecrets` test enforces it). `InputPrompt` keeps refs beside state so keys batched in one tick see each other's result.
+- Model catalogue: `providers.<id>.models` (zod: single tokens, no duplicates, `[]` → defaults). Derivations are pure in `src/config/models.ts` (`modelCatalog`, `learnModelPatch` on the **raw global** file); learned models are written to the global file only. `ModelFlowState` uses one `ModelEntry` per model and a `customProvider` step; `modelFlowReducer(state, event, ctx)` needs `{ statuses, settings, activeModel }`.
+- Approval policy lives in `src/tools/approval.ts` (pure): tools declare `kind: 'read' | 'edit' | 'command' | 'question'` (no `requiresConfirmation`), `classifyAction` turns a `command` into `destructive` via `DESTRUCTIVE_PATTERNS`, and `needsConfirmation(mode, kind)` is the FR-003 table. `runTurn` receives `approvalMode: () => ApprovalMode` (a getter, so Tab mid-turn applies to the next call) and reports auto-approved actions through `onAutoApproved`. The live mode is `SessionController.approvalMode` (Tab / `/approval-mode`, session only — never written to settings); the initial value is `tools.approvalMode` (`--approval-mode`, `--yolo`). Destructive patterns are a convenience, not a security boundary; `resolveInsideCwd` applies in every mode.
+- `ask_user` (`src/tools/askUser.ts`, `kind: 'question'`) never goes through `needsConfirmation` and stays available with `--no-tools` (`toolsFor`). It reaches the UI through `ToolContext.ask` → `Session.pendingQuestion` (`awaiting_answer`) → `SessionController.questionFlow` driven by the pure reducer `src/setup/askUserFlow.ts`; `AskUserDialog` renders in the confirmation slot. Free text typed in "Outro…" goes to the model only: never to `history.jsonl` nor to logs (`noSecrets` test). `multiSelect` is `.optional()` (not `.default`) so the JSON Schema sent to the model keeps it non-required.
+- Code adapted from qwen-code (Apache-2.0) must start with the attribution header (see `src/tools/approval.ts`) and be listed in `THIRD_PARTY_NOTICES.md`; `tests/unit/license/attribution.test.ts` fails on a missing header, an unlisted Apache header, or a `package.json` without `license: MIT`. The project is and stays open-source (constitution §VI–VII).
 
 ## Recent Changes
 
+- 005-approval-modes-ask-user: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `key.tab`/`key.shift`), `zod` 4 (`z.strictObject` + `z.toJSONSchema` para o esquema de `ask_user`), `yargs` (novos argumentos). Nenhuma nova.
+
+- 004-history-model-catalog: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput`), `zod` 4 (esquema de `models`), `node:fs` (append/rename). Nenhuma nova.
+
 - 003-auth-provider-setup: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `isActive`), `@anthropic-ai/sdk` (`models.retrieve` para teste), `openai` (`chat.completions.create` mínimo para teste), `zod` (validação antes de gravar), `node:child_process` (CLI `ant`). Nenhuma nova.
-
-- 002-fullscreen-ui-markdown: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack da feature 001. + existentes: `ink` 8.0.0 (usa `alternateScreen`, `useWindowSize`, `overflow="hidden"` + `contentOffsetY`, `useBoxMetrics`, `useInput` com `pageUp/pageDown/home/end/shift`, `useStdin`), `react` 19. Novas: `unified`, `remark-parse`, `remark-gfm`, `lowlight`, `string-width`, `ink-gradient` (ver research R8).
-
-- 001-maestro-cli-mvp: initial CLI — interactive Ink chat, Claude + Qwen providers, `/model` switching, workspace tools with confirmation, `-p` non-interactive mode.
 
 <!-- MANUAL ADDITIONS START -->
 

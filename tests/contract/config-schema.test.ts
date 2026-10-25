@@ -31,7 +31,12 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     });
     // no baseUrl stored: the provider resolves the protocol's Qwen Cloud endpoint
     expect(r.providers.qwen.baseUrl).toBeUndefined();
-    expect(r.tools).toEqual({ enabled: true, commandTimeoutMs: 60000, maxOutputChars: 20000 });
+    expect(r.tools).toEqual({
+      enabled: true,
+      commandTimeoutMs: 60000,
+      maxOutputChars: 20000,
+      approvalMode: 'default',
+    });
     expect(r.ui).toEqual({ altScreen: true, mouse: true });
   });
 
@@ -55,6 +60,37 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
 
   it('rejects an unknown activeProvider', () => {
     expect(issuesOf({ activeProvider: 'gemini' })[0]).toMatch(/^activeProvider: /);
+  });
+
+  it('providers.<id>.models: defaults, empty → defaults, tokens and duplicates (contracts/model-catalog.md § 1)', () => {
+    const r = settingsSchema.parse({});
+    expect(r.providers.claude.models).toEqual([
+      'claude-opus-5-5',
+      'claude-sonnet-5-5',
+      'claude-haiku-5-5',
+    ]);
+    expect(r.providers.qwen.models).toEqual(['qwen3-coder-plus', 'qwen3-coder-flash', 'qwen3-max']);
+    expect(settingsSchema.parse(INITIAL_SETTINGS).providers.qwen.models).toEqual(
+      r.providers.qwen.models,
+    );
+    expect(
+      settingsSchema.parse({ providers: { qwen: { models: [] } } }).providers.qwen.models,
+    ).toEqual(r.providers.qwen.models);
+    expect(
+      settingsSchema.parse({ providers: { qwen: { models: ['a', 'b'] } } }).providers.qwen.models,
+    ).toEqual(['a', 'b']);
+    expect(issuesOf({ providers: { qwen: { models: ['ok', 'a b'] } } })).toContain(
+      'providers.qwen.models.1: must be a single non-empty token',
+    );
+    expect(issuesOf({ providers: { qwen: { models: [''] } } })).toContain(
+      'providers.qwen.models.0: must be a single non-empty token',
+    );
+    expect(issuesOf({ providers: { qwen: { models: ['x', 'y', 'x'] } } })).toContain(
+      "providers.qwen.models: duplicate model 'x'",
+    );
+    expect(issuesOf({ providers: { qwen: { models: 'x' } } })[0]).toMatch(
+      /^providers\.qwen\.models: /,
+    );
   });
 
   it('requires http(s) scheme on baseUrl and strips the trailing slash', () => {
@@ -82,6 +118,15 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     );
     expect(issuesOf({ tools: { commandTimeoutMs: 10 } })[0]).toMatch(/^tools\.commandTimeoutMs: /);
     expect(issuesOf({ tools: { maxOutputChars: 10 } })[0]).toMatch(/^tools\.maxOutputChars: /);
+  });
+
+  /** contracts/approval-modes.md § 1, § 5 */
+  it('tools.approvalMode accepts the four modes and rejects anything else', () => {
+    for (const mode of ['default', 'auto-edit', 'auto', 'yolo'] as const) {
+      expect(settingsSchema.parse({ tools: { approvalMode: mode } }).tools.approvalMode).toBe(mode);
+    }
+    expect(issuesOf({ tools: { approvalMode: 'plan' } })[0]).toMatch(/^tools\.approvalMode: /);
+    expect(issuesOf({ tools: { approvalMode: 'foo' } })[0]).toMatch(/^tools\.approvalMode: /);
   });
 
   it('allows _comment at every level and treats apiKey "" as unset', () => {

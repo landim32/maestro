@@ -21,7 +21,9 @@ async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
 
 /**
  * Runs one turn and exits (contracts/cli.md § 3): answer → stdout, progress/errors → stderr.
- * Tool confirmations are auto-declined because nobody can answer them.
+ * Actions the approval mode (--approval-mode / --yolo / tools.approvalMode) would ask about are
+ * declined because nobody can answer; the rest run and are announced on stderr
+ * (specs/005 contracts/approval-modes.md § 6).
  */
 export async function runNonInteractive(opts: NonInteractiveOptions): Promise<number> {
   const stdout = opts.stdout ?? process.stdout;

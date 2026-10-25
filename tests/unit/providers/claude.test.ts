@@ -163,7 +163,7 @@ describe('claude provider — streaming', () => {
       name: 'read_file' as const,
       description: 'd',
       inputSchema: z.object({ path: z.string() }),
-      requiresConfirmation: false,
+      kind: 'read' as const,
       run: async () => ({ output: '', isError: false }),
     };
     const p = createClaudeProvider(makeCtx());
@@ -330,7 +330,7 @@ describe('claude provider — history conversion', () => {
         name: 'list_directory',
         description: 'ls',
         inputSchema: z.object({ path: z.string().optional() }),
-        requiresConfirmation: false,
+        kind: 'read' as const,
         run: async () => ({ output: '', isError: false }),
       },
     ]);

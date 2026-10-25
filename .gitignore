@@ -11,6 +11,8 @@ coverage/
 
 # maestro project-level settings (may contain keys)
 .maestro/
+# qwen-code project-level state (local tool data)
+.qwen/
 
 # editors / OS
 .vscode/

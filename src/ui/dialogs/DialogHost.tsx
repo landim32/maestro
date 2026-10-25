@@ -6,11 +6,13 @@ export interface DialogHostProps {
   dialog: DialogState;
   color: boolean;
   onInput: (value: string) => void;
+  /** Terminal rows (long lists show a window around the selection). */
+  rows?: number;
 }
 
 /** Picks the dialog component for the controller's current dialog state. */
-export function DialogHost({ dialog, color, onInput }: DialogHostProps) {
+export function DialogHost({ dialog, color, onInput, rows }: DialogHostProps) {
   if (dialog.type === 'auth')
     return <AuthDialog flow={dialog.flow} color={color} onInput={onInput} />;
-  return <ModelDialog flow={dialog.flow} color={color} onInput={onInput} />;
+  return <ModelDialog flow={dialog.flow} color={color} onInput={onInput} rows={rows} />;
 }

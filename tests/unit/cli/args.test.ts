@@ -34,7 +34,21 @@ describe('parseArgs', () => {
       color: false,
       altScreen: false,
       debug: true,
+      approvalMode: undefined,
     });
+  });
+
+  /** contracts/approval-modes.md § 5 */
+  it('parses --approval-mode (with legacy spellings) and --yolo', async () => {
+    expect((await parseArgs([])).approvalMode).toBeUndefined();
+    expect((await parseArgs(['--approval-mode', 'auto'])).approvalMode).toBe('auto');
+    expect((await parseArgs(['--approval-mode', 'auto_edit'])).approvalMode).toBe('auto-edit');
+    expect((await parseArgs(['--approval-mode', 'YOLO'])).approvalMode).toBe('yolo');
+    expect((await parseArgs(['--yolo'])).approvalMode).toBe('yolo');
+    expect((await parseArgs(['--yolo', '--approval-mode', 'default'])).approvalMode).toBe('yolo');
+    await expect(parseArgs(['--approval-mode', 'foo'])).rejects.toThrow(/auto-edit, auto, yolo/);
+    await expect(parseArgs(['--approval-mode', 'plan'])).rejects.toBeInstanceOf(UsageError);
+    expect((await parseArgs(['--help'])).helpText).toContain('--approval-mode');
   });
 
   it('alternate screen is on by default and off with --no-altscreen', async () => {
