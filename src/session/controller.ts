@@ -698,6 +698,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
         system: guidance ? `${this.system}\n\n${guidance}` : this.system,
         tools: this.tools,
         toolSettings: this.ctx.settings.tools,
+        maxToolIterations: this.ctx.settings.tools.maxToolIterations,
         approvalMode: () => this.approvalMode,
         intercept: this.specKit?.intercept,
         // On the default chat the request looks exactly as before (no explicit model).
