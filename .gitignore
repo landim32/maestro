@@ -19,3 +19,6 @@ coverage/
 Thumbs.db
 *.tmp
 *.swp
+
+# stamped by scripts/version.mjs (npm run dev)
+src/version.json

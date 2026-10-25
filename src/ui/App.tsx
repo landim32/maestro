@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from 'ink';
 import type { UiSettings } from '../config/schema.js';
 import type { SessionController } from '../session/controller.js';
+import type { DialogKey } from '../setup/dialog.js';
 import { pickBannerVariant } from './banner.js';
 import { Banner } from './components/Banner.js';
 import { Header } from './components/Header.js';
@@ -10,6 +11,7 @@ import { InputPrompt } from './components/InputPrompt.js';
 import { StatusBar } from './components/StatusBar.js';
 import { ConfirmationDialog } from './components/ConfirmationDialog.js';
 import { Transcript } from './components/Transcript.js';
+import { DialogHost } from './dialogs/DialogHost.js';
 import { useKeyboard } from './hooks/useKeyboard.js';
 import { useMouseWheel } from './hooks/useMouseWheel.js';
 import { useSession } from './hooks/useSession.js';
@@ -29,6 +31,7 @@ const DEFAULT_UI = { altScreen: true, mouse: true, color: undefined } as const;
 export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProps) {
   const snap = useSession(controller);
   const caps = useTerminalCapabilities({ ui, flags, env });
+  const dialog = controller.dialog;
 
   // Scroll actions are provided by the Transcript once mounted.
   const viewportRef = useRef<ViewportActions | null>(null);
@@ -45,15 +48,24 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
   );
   const [scrollable, setScrollable] = useState(false);
 
+  const onDialogKey = useCallback((key: DialogKey) => controller.setup.dispatch(key), [controller]);
+  const onDialogInput = useCallback(
+    (value: string) => controller.setup.dispatch({ type: 'input', value }),
+    [controller],
+  );
+
   const { exitArmed } = useKeyboard({
     state: snap.state,
     onCancel: () => controller.cancel(),
     onExit,
     onConfirm: (ok) => controller.confirm(ok),
     viewport,
+    dialogOpen: Boolean(dialog),
+    onDialogKey,
   });
 
   const onWheel = useCallback((lines: number) => viewport.scrollBy(lines), [viewport]);
+  // Mouse tracking stays on while a dialog is open (toggling it would spam escape sequences).
   useMouseWheel({ enabled: caps.mouse, onWheel });
 
   const onSubmit = useCallback(
@@ -92,33 +104,43 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
         columns={caps.columns}
         color={caps.color}
       />
-      <Transcript capabilities={caps} actionsRef={viewportRef} onScrollableChange={setScrollable}>
-        <MessageList
-          history={snap.history}
-          notices={snap.notices}
-          partialText={snap.partialText}
-          generating={snap.state === 'generating'}
-          width={contentWidth}
-          capabilities={caps}
-          leading={
-            <Banner
-              variant={pickBannerVariant(caps)}
-              color={caps.color}
-              providerId={snap.providerId}
-              model={snap.model}
-              cwd={controller.session.cwd}
-            />
-          }
-        />
-      </Transcript>
+      {dialog ? (
+        <DialogHost dialog={dialog} color={caps.color} onInput={onDialogInput} />
+      ) : (
+        <Transcript capabilities={caps} actionsRef={viewportRef} onScrollableChange={setScrollable}>
+          <MessageList
+            history={snap.history}
+            notices={snap.notices}
+            partialText={snap.partialText}
+            generating={snap.state === 'generating'}
+            width={contentWidth}
+            capabilities={caps}
+            leading={
+              <Banner
+                variant={pickBannerVariant(caps)}
+                color={caps.color}
+                providerId={snap.providerId}
+                model={snap.model}
+                cwd={controller.session.cwd}
+              />
+            }
+          />
+        </Transcript>
+      )}
       {snap.state === 'awaiting_confirmation' && snap.pending && (
         <ConfirmationDialog action={snap.pending} maxLines={confirmMaxLines} color={caps.color} />
       )}
       <InputPrompt
-        active={snap.state === 'idle'}
+        active={snap.state === 'idle' && !dialog}
         historyItems={snap.userInputs}
         onSubmit={onSubmit}
-        placeholder={snap.state === 'idle' ? undefined : 'waiting for the model…'}
+        placeholder={
+          dialog
+            ? 'diálogo aberto — Esc para fechar'
+            : snap.state === 'idle'
+              ? undefined
+              : 'waiting for the model…'
+        }
         columns={caps.columns}
         color={caps.color}
       />
@@ -128,7 +150,7 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
         usage={snap.usage}
         capabilities={caps}
         transientNotice={transientNotice}
-        scrollable={scrollable}
+        scrollable={scrollable && !dialog}
       />
     </Box>
   );

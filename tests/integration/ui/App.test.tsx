@@ -33,13 +33,15 @@ describe('App (interactive UI)', () => {
     ]);
   });
 
-  it('runs /model and shows the providers table; /exit triggers onExit', async () => {
+  it('runs /model (opens the selector, Esc closes it); /exit triggers onExit', async () => {
     const ui = mountApp({ columns: 100, rows: 30 });
     await waitForFrame(ui, 'Type a message');
     ui.stdin.write('/model');
     await tick();
     ui.stdin.write(KEYS.enter);
-    await waitForFrame(ui, 'Active: claude');
+    await waitForFrame(ui, 'Selecionar modelo');
+    ui.stdin.write(KEYS.esc);
+    await waitForFrame(ui, 'Type a message');
     ui.stdin.write('/exit');
     await tick();
     ui.stdin.write(KEYS.enter);

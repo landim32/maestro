@@ -25,10 +25,12 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     });
     expect(r.providers.qwen).toMatchObject({
       enabled: false,
+      protocol: 'openai',
       model: 'qwen3-coder-plus',
       maxTokens: 16000,
-      baseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
     });
+    // no baseUrl stored: the provider resolves the protocol's Qwen Cloud endpoint
+    expect(r.providers.qwen.baseUrl).toBeUndefined();
     expect(r.tools).toEqual({ enabled: true, commandTimeoutMs: 60000, maxOutputChars: 20000 });
     expect(r.ui).toEqual({ altScreen: true, mouse: true });
   });

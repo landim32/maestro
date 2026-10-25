@@ -31,10 +31,22 @@ function make(
 }
 
 describe('/model', () => {
-  it('without args shows the active provider and a table with every provider', async () => {
+  it('without args opens the model selector (interactive) with the active item marked', async () => {
     const { ctl } = make();
     await executeSlash('/model', ctl);
-    const text = ctl.notices[0]?.text ?? '';
+    expect(ctl.dialog?.type).toBe('model');
+    const flow = ctl.dialog?.type === 'model' ? ctl.dialog.flow : undefined;
+    expect(flow?.step).toBe('list');
+    if (flow?.step === 'list') {
+      expect(flow.items.map((i) => i.providerId)).toEqual(['claude', 'qwen']);
+      expect(flow.items[flow.selected]?.providerId).toBe('claude');
+      expect(flow.items[1]?.maskedKey).toBe('****7777');
+    }
+  });
+
+  it('the textual provider table masks keys and marks the active provider', () => {
+    const { ctl } = make();
+    const text = ctl.describeProviders();
     expect(text).toContain('Active: claude / claude-opus-5-5');
     expect(text).toMatch(/claude\s+active/);
     expect(text).toMatch(/qwen\s+ready/);
