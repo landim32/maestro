@@ -21,6 +21,12 @@ export class APIUserAbortError extends APIError {
     super(undefined, 'Request was aborted.');
   }
 }
+export class APIConnectionTimeoutError extends APIConnectionError {
+  constructor() {
+    super('Request timed out.');
+  }
+}
+export class NotFoundError extends APIError {}
 
 export interface ScriptedCompletion {
   chunks: unknown[];
@@ -50,6 +56,8 @@ export default class OpenAIMock {
   static BadRequestError = BadRequestError;
   static APIConnectionError = APIConnectionError;
   static APIUserAbortError = APIUserAbortError;
+  static APIConnectionTimeoutError = APIConnectionTimeoutError;
+  static NotFoundError = NotFoundError;
 
   chat = {
     completions: {

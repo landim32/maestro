@@ -26,7 +26,6 @@ exports[`Markdown renderer — snapshots (80 columns) > code-ts.md with color 1`
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ typescript                                                                   │
 │ import { readFile } from "node:fs/promises";                                 │
-│                                                                              │
 │ // lê um arquivo                                                             │
 │ export async function load(path: string): Promise<number> {                  │
 │   const text = await readFile(path, "utf8");                                 │
@@ -43,7 +42,6 @@ exports[`Markdown renderer — snapshots (80 columns) > code-ts.md without color
 ╭──────────────────────────────────────────────────────────────────────────────╮
 │ typescript                                                                   │
 │ import { readFile } from "node:fs/promises";                                 │
-│                                                                              │
 │ // lê um arquivo                                                             │
 │ export async function load(path: string): Promise<number> {                  │
 │   const text = await readFile(path, "utf8");                                 │
@@ -61,7 +59,6 @@ exports[`Markdown renderer — snapshots (80 columns) > code-unclosed.md with co
 │ python                                                                       │
 │ def hello(name):                                                             │
 │     print(f"hello {name}")                                                   │
-│                                                                              │
 │ hello("world")                                                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯"
 `;
@@ -73,7 +70,6 @@ exports[`Markdown renderer — snapshots (80 columns) > code-unclosed.md without
 │ python                                                                       │
 │ def hello(name):                                                             │
 │     print(f"hello {name}")                                                   │
-│                                                                              │
 │ hello("world")                                                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯"
 `;

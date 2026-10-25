@@ -46,6 +46,37 @@ describe('non-interactive mode (-p)', () => {
     expect(stdout.text() + stderr.text()).not.toMatch(/♪|███|\x1b\[\?1049|\x1b\[\?1002/);
   });
 
+  it('/auth prints guidance instead of opening a dialog, exit 0', async () => {
+    const { controller, stdout, stderr } = make(textProvider(['x']));
+    const code = await runNonInteractive({
+      controller,
+      prompt: '/auth',
+      stdout,
+      stderr,
+      handleSignals: false,
+    });
+    expect(code).toBe(0);
+    expect(controller.dialog).toBeUndefined();
+    expect(stdout.text() + stderr.text()).toMatch(
+      /Configuração interativa indisponível no modo -p/,
+    );
+    expect(stdout.text() + stderr.text()).toMatch(/DASHSCOPE_API_KEY/);
+  });
+
+  it('/model without args prints the textual table in non-interactive mode', async () => {
+    const { controller, stdout, stderr } = make(textProvider(['x']));
+    const code = await runNonInteractive({
+      controller,
+      prompt: '/model',
+      stdout,
+      stderr,
+      handleSignals: false,
+    });
+    expect(code).toBe(0);
+    expect(controller.dialog).toBeUndefined();
+    expect(stdout.text() + stderr.text()).toContain('Active: claude');
+  });
+
   it('writes raw markdown (no terminal formatting) in non-interactive mode', async () => {
     const md = '# Título\n\n- item **forte**\n\n```ts\nconst a = 1;\n```\n';
     const { controller, stdout, stderr } = make(textProvider([md]));

@@ -23,6 +23,8 @@ npm link          # disponibiliza o comando `maestro`
 
 ## Credenciais
 
+**Pelo próprio Maestro.** Dentro da sessão, digite `/auth` (ou `/connect`, `/login`): um diálogo lista **Claude API** (chave), **Claude Auth Login** (login no navegador pela CLI `ant`) e **Qwen** (DashScope), pede os campos, testa a conexão e grava em `settings.json`. É o caminho recomendado; o resto desta seção descreve a configuração manual equivalente.
+
 **Claude.** O Maestro reutiliza o que já existir na máquina, nesta ordem: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, ou um perfil criado por `ant auth login`. O login do próprio Claude Code **não** é lido pelo SDK. Faça uma vez:
 
 ```bash
@@ -35,13 +37,20 @@ ant auth login
 export ANTHROPIC_API_KEY=sk-ant-...        # PowerShell: $env:ANTHROPIC_API_KEY = "sk-ant-..."
 ```
 
-**Qwen (DashScope).** Defina a chave e ative o provedor:
+**Qwen (Qwen Cloud / Alibaba Cloud).** O caminho mais simples é `/auth` → **Qwen** dentro do Maestro. Na primeira etapa escolha o protocolo do endpoint:
+
+| Protocolo                  | Endpoint padrão                                               |
+| -------------------------- | ------------------------------------------------------------- |
+| OpenAI compatível (padrão) | `https://token-plan.maas.qwencloudapi.com/compatible-mode/v1` |
+| Anthropic compatível       | `https://token-plan.maas.qwencloudapi.com/apps/anthropic`     |
+
+A URL continua editável na etapa seguinte (por exemplo, DashScope `https://dashscope.aliyuncs.com/compatible-mode/v1` ou `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` para contas pay-as-you-go). Manualmente, defina a chave e ative o provedor:
 
 ```bash
 export DASHSCOPE_API_KEY=sk-...            # PowerShell: $env:DASHSCOPE_API_KEY = "sk-..."
 ```
 
-e em `~/.maestro/settings.json` coloque `"enabled": true` em `providers.qwen`. Fora da China use `https://dashscope-intl.aliyuncs.com/compatible-mode/v1` em `baseUrl`.
+e em `~/.maestro/settings.json` coloque `"enabled": true` em `providers.qwen`; `protocol` aceita `"openai"` ou `"anthropic"` e `baseUrl` é opcional (sem ela vale o endpoint padrão do protocolo).
 
 ## Configuração
 
@@ -59,8 +68,9 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
     },
     "qwen": {
       "enabled": true,
+      "protocol": "openai",
       "model": "qwen3-coder-plus",
-      "baseUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+      "baseUrl": "https://token-plan.maas.qwencloudapi.com/compatible-mode/v1"
     }
   },
   "tools": { "enabled": true, "commandTimeoutMs": 60000, "maxOutputChars": 20000 }
@@ -86,16 +96,17 @@ A sessão interativa ocupa a tela inteira do terminal (tela alternativa, restaur
 
 Na sessão:
 
-| Comando / tecla                          | Efeito                                              |
-| ---------------------------------------- | --------------------------------------------------- |
-| `/model`                                 | Mostra o provedor ativo e o estado de cada provedor |
-| `/model qwen` / `/model claude qwen-max` | Troca provedor (e modelo) mantendo a conversa       |
-| `/clear`                                 | Nova conversa                                       |
-| `/help`                                  | Lista comandos                                      |
-| `/exit`                                  | Sai                                                 |
-| Esc ou Ctrl+C                            | Cancela a resposta em geração                       |
-| Ctrl+C duas vezes                        | Sai                                                 |
-| `y` / `n`                                | Aprova / recusa uma escrita de arquivo ou comando   |
+| Comando / tecla                          | Efeito                                                                         |
+| ---------------------------------------- | ------------------------------------------------------------------------------ |
+| `/auth`, `/connect`, `/login`            | Abre o diálogo para conectar um provedor (Claude API, Claude Auth Login, Qwen) |
+| `/model`                                 | Abre o seletor de modelo com o ativo marcado e todos os configurados           |
+| `/model qwen` / `/model claude qwen-max` | Troca provedor (e modelo) mantendo a conversa                                  |
+| `/clear`                                 | Nova conversa                                                                  |
+| `/help`                                  | Lista comandos                                                                 |
+| `/exit`                                  | Sai                                                                            |
+| Esc ou Ctrl+C                            | Cancela a resposta em geração                                                  |
+| Ctrl+C duas vezes                        | Sai                                                                            |
+| `y` / `n`                                | Aprova / recusa uma escrita de arquivo ou comando                              |
 
 Códigos de saída: `0` sucesso · `1` erro do provedor (modo `-p`) · `2` uso/configuração inválida · `3` nenhum provedor utilizável · `130` interrompido.
 
@@ -106,7 +117,12 @@ npm run dev          # roda a partir do código-fonte (tsx)
 npm test             # vitest — sem rede, SDKs mockados
 npm run lint
 npm run build
+npm run version:print   # versão calculada pelas regras do GitVersion
 ```
+
+### Versão (GitVersion)
+
+A versão exibida por `maestro --version`, no cabeçalho e nos logs não é uma constante: vem do GitVersion. O workflow **Version and Tag** calcula a versão a partir das tags `v*` e dos prefixos dos commits (`fix:` → patch, `feat:` → minor, `major:` → major, conforme `GitVersion.yml`), carimba `package.json` e `dist/version.json`, gera o pacote `maestro-<versão>.tgz` e cria a tag. Localmente, `scripts/version.mjs` reproduz as mesmas regras a partir do histórico git: `npm run build` grava `dist/version.json` e `npm run dev` grava `src/version.json` (ignorado pelo git). Sem carimbo, vale a versão do `package.json`. Em branches fora de `main`, a versão recebe um sufixo de pré‑lançamento (por exemplo `0.1.2-feature-x.3`).
 
 Estrutura: `src/config` (settings e precedência), `src/providers` (interface `ModelProvider`, `claude.ts`, `qwen.ts`), `src/session` (histórico, loop de turno e ferramentas, comandos `/`), `src/tools` (sandbox e quatro ferramentas), `src/ui` (Ink), `src/cli` (argumentos, pré‑voo, modos). Os documentos de especificação e plano estão em `specs/001-maestro-cli-mvp/`.
 

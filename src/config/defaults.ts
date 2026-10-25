@@ -1,5 +1,26 @@
+export type QwenProtocol = 'openai' | 'anthropic';
+
+/** Qwen Cloud (token plan) endpoints — one per wire protocol. */
+export const QWENCLOUD_OPENAI_BASE_URL =
+  'https://token-plan.maas.qwencloudapi.com/compatible-mode/v1';
+export const QWENCLOUD_ANTHROPIC_BASE_URL =
+  'https://token-plan.maas.qwencloudapi.com/apps/anthropic';
+/** Alibaba Cloud Model Studio (DashScope) endpoints — alternatives for pay-as-you-go accounts. */
 export const DEFAULT_DASHSCOPE_BASE_URL = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
 export const DASHSCOPE_INTL_BASE_URL = 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1';
+
+export const QWEN_DEFAULT_BASE_URLS: Record<QwenProtocol, string> = {
+  openai: QWENCLOUD_OPENAI_BASE_URL,
+  anthropic: QWENCLOUD_ANTHROPIC_BASE_URL,
+};
+
+/** Every endpoint the UI proposes as a default; used to decide whether a URL was user-edited. */
+export const KNOWN_QWEN_BASE_URLS: readonly string[] = [
+  QWENCLOUD_OPENAI_BASE_URL,
+  QWENCLOUD_ANTHROPIC_BASE_URL,
+  DEFAULT_DASHSCOPE_BASE_URL,
+  DASHSCOPE_INTL_BASE_URL,
+];
 
 export const DEFAULTS = {
   activeProvider: 'claude',
@@ -12,7 +33,7 @@ export const DEFAULTS = {
   qwen: {
     model: 'qwen3-coder-plus',
     maxTokens: 16_000,
-    baseUrl: DEFAULT_DASHSCOPE_BASE_URL,
+    protocol: 'openai' as QwenProtocol,
   },
   tools: {
     enabled: true,
@@ -21,10 +42,15 @@ export const DEFAULTS = {
   },
 } as const;
 
+/** Effective Qwen endpoint: the configured URL or the protocol's default. */
+export function resolveQwenBaseUrl(cfg: { protocol: QwenProtocol; baseUrl?: string }): string {
+  return cfg.baseUrl ?? QWEN_DEFAULT_BASE_URLS[cfg.protocol];
+}
+
 /** Content written to `~/.maestro/settings.json` on first run (contracts/config-schema.md § 4). */
 export const INITIAL_SETTINGS = {
   _comment:
-    "Maestro settings. Edit providers below. Secrets may also come from env vars: ANTHROPIC_API_KEY (or 'ant auth login') for claude, DASHSCOPE_API_KEY for qwen.",
+    "Maestro settings. Edit providers below, or run /auth inside maestro. Secrets may also come from env vars: ANTHROPIC_API_KEY (or 'ant auth login') for claude, DASHSCOPE_API_KEY for qwen.",
   activeProvider: 'claude',
   providers: {
     claude: {
@@ -37,11 +63,11 @@ export const INITIAL_SETTINGS = {
       fallbacks: DEFAULTS.claude.fallbacks,
     },
     qwen: {
-      _comment: `Alibaba Cloud DashScope (OpenAI-compatible). Set apiKey (or DASHSCOPE_API_KEY) and set enabled to true. International endpoint: ${DASHSCOPE_INTL_BASE_URL}`,
+      _comment: `Qwen Cloud. protocol: 'openai' (default ${QWENCLOUD_OPENAI_BASE_URL}) or 'anthropic' (default ${QWENCLOUD_ANTHROPIC_BASE_URL}). Set baseUrl to override, e.g. DashScope ${DEFAULT_DASHSCOPE_BASE_URL} or ${DASHSCOPE_INTL_BASE_URL}. Set apiKey (or DASHSCOPE_API_KEY) and enabled: true.`,
       enabled: false,
+      protocol: DEFAULTS.qwen.protocol,
       model: DEFAULTS.qwen.model,
       maxTokens: DEFAULTS.qwen.maxTokens,
-      baseUrl: DEFAULTS.qwen.baseUrl,
       apiKey: '',
     },
   },

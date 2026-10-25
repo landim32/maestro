@@ -2,6 +2,8 @@ import { useRef, useState } from 'react';
 import { useInput } from 'ink';
 import type { Key } from 'ink';
 import type { SessionState } from '../../session/session.js';
+import type { DialogKey } from '../../setup/dialog.js';
+import { isMouseSequence } from './useMouseWheel.js';
 import type { ViewportActions } from './useViewport.js';
 
 export interface KeyboardHandlers {
@@ -10,6 +12,9 @@ export interface KeyboardHandlers {
   onExit: () => void;
   onConfirm: (approved: boolean) => void;
   viewport?: ViewportActions;
+  /** When a modal dialog is open, navigation keys are routed here instead. */
+  dialogOpen?: boolean;
+  onDialogKey?: (key: DialogKey) => void;
   armWindowMs?: number;
 }
 
@@ -26,7 +31,8 @@ export function isScrollKey(key: Key): boolean {
 
 /**
  * Global shortcuts: Esc / Ctrl+C cancel, Ctrl+C twice exits, y/n answer confirmations,
- * PageUp/PageDown/Home/End/Shift+↑↓ scroll the transcript.
+ * PageUp/PageDown/Home/End/Shift+↑↓ scroll the transcript. With a dialog open, ↑/↓/Enter/Esc
+ * go to the dialog (contracts/dialog-flows.md § 1); Ctrl+C twice still exits.
  */
 export function useKeyboard({
   state,
@@ -34,14 +40,46 @@ export function useKeyboard({
   onExit,
   onConfirm,
   viewport,
+  dialogOpen = false,
+  onDialogKey,
   armWindowMs = 2000,
 }: KeyboardHandlers) {
   const [exitArmed, setExitArmed] = useState(false);
   const armedAt = useRef<number | null>(null);
   const timer = useRef<NodeJS.Timeout | null>(null);
 
+  const armExit = (): boolean => {
+    const now = Date.now();
+    if (armedAt.current !== null && now - armedAt.current <= armWindowMs) {
+      onExit();
+      return true;
+    }
+    armedAt.current = now;
+    setExitArmed(true);
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      armedAt.current = null;
+      setExitArmed(false);
+    }, armWindowMs);
+    return false;
+  };
+
   useInput((input, key) => {
     const ctrlC = key.ctrl && input === 'c';
+    if (isMouseSequence(input)) return;
+
+    if (dialogOpen) {
+      if (ctrlC) {
+        if (!armExit()) onDialogKey?.({ type: 'cancel' });
+        return;
+      }
+      if (key.escape) onDialogKey?.({ type: 'back' });
+      else if (key.return) onDialogKey?.({ type: 'enter' });
+      else if (key.upArrow && !key.shift) onDialogKey?.({ type: 'up' });
+      else if (key.downArrow && !key.shift) onDialogKey?.({ type: 'down' });
+      // character input is handled by the dialog's TextField
+      return;
+    }
 
     if (viewport && isScrollKey(key)) {
       if (key.pageUp) viewport.pageUp();
@@ -67,20 +105,7 @@ export function useKeyboard({
       }
       return;
     }
-    if (ctrlC) {
-      const now = Date.now();
-      if (armedAt.current !== null && now - armedAt.current <= armWindowMs) {
-        onExit();
-        return;
-      }
-      armedAt.current = now;
-      setExitArmed(true);
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = setTimeout(() => {
-        armedAt.current = null;
-        setExitArmed(false);
-      }, armWindowMs);
-    }
+    if (ctrlC) armExit();
   });
 
   return { exitArmed };

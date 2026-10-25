@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
-import type { ChildProcess } from 'node:child_process';
 import { z } from 'zod';
+import { killTree } from '../utils/process.js';
 import { resolveInsideCwd, truncate } from './sandbox.js';
 import type { ToolDefinition } from './types.js';
 
@@ -27,23 +27,6 @@ export function shellFor(platform: NodeJS.Platform = process.platform): {
     };
   }
   return { file: '/bin/sh', args: (cmd) => ['-c', cmd] };
-}
-
-/** Kills the whole process tree: on Windows killing cmd.exe alone leaves grandchildren alive. */
-function killTree(child: ChildProcess): void {
-  if (child.exitCode !== null || child.pid === undefined) return;
-  if (process.platform === 'win32') {
-    const killer = spawn('taskkill', ['/pid', String(child.pid), '/T', '/F'], {
-      windowsHide: true,
-      stdio: 'ignore',
-    });
-    killer.on('error', () => child.kill());
-    return;
-  }
-  child.kill('SIGTERM');
-  setTimeout(() => {
-    if (child.exitCode === null) child.kill('SIGKILL');
-  }, 500).unref();
 }
 
 export const runCommandTool: ToolDefinition<RunCommandInput> = {

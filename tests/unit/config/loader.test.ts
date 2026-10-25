@@ -54,9 +54,8 @@ describe('loadSettings', () => {
     expect(settings.providers.claude.model).toBe('claude-opus-5-5');
     expect(settings.providers.claude.effort).toBe('medium');
     expect(settings.providers.claude.fallbacks).toBe(true);
-    expect(settings.providers.qwen.baseUrl).toBe(
-      'https://dashscope.aliyuncs.com/compatible-mode/v1',
-    );
+    expect(settings.providers.qwen.protocol).toBe('openai');
+    expect(settings.providers.qwen.baseUrl).toBeUndefined();
     expect(settings.tools).toEqual({
       enabled: true,
       commandTimeoutMs: 60000,

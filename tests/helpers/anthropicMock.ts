@@ -24,6 +24,17 @@ export class APIUserAbortError extends APIError {
     super(undefined, 'Request was aborted.');
   }
 }
+export class APIConnectionTimeoutError extends APIConnectionError {
+  constructor() {
+    super('Request timed out.');
+  }
+}
+export class NotFoundError extends APIError {}
+
+/** `client.models.retrieve` spy (connection test). */
+export const modelsRetrieve = vi.fn<(...args: unknown[]) => Promise<unknown>>();
+/** `client.messages.create` spy (non-streaming probe used by the Qwen Anthropic-compatible test). */
+export const messagesCreate = vi.fn<(...args: unknown[]) => Promise<unknown>>();
 
 export interface ScriptedStream {
   events: unknown[];
@@ -94,9 +105,13 @@ export default class AnthropicMock {
   static BadRequestError = BadRequestError;
   static APIConnectionError = APIConnectionError;
   static APIUserAbortError = APIUserAbortError;
+  static APIConnectionTimeoutError = APIConnectionTimeoutError;
+  static NotFoundError = NotFoundError;
 
+  models = { retrieve: (...args: unknown[]) => modelsRetrieve(...args) };
   messages = {
     stream: (p: Record<string, unknown>, o?: { signal?: AbortSignal }) => nextStream('plain', p, o),
+    create: (...args: unknown[]) => messagesCreate(...args),
   };
   beta = {
     messages: {

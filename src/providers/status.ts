@@ -44,6 +44,7 @@ export function describeProvider(id: ProviderId, ctx: ProviderContext): Provider
     maskedKey,
     missing,
     hint: missing.length ? CREDENTIAL_HINTS[id] : undefined,
+    verified: ctx.unverified?.has(id) ? false : undefined,
   };
 }
 

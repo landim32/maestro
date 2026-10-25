@@ -50,6 +50,8 @@ export interface ProviderStatus {
   maskedKey?: string;
   missing: string[];
   hint?: string;
+  /** false when the credentials were saved without a successful connection test (feature 003). */
+  verified?: boolean;
 }
 
 export interface ModelProvider {
@@ -64,6 +66,8 @@ export interface ProviderContext {
   credentialSources: Record<ProviderId, CredentialSource>;
   activeId: ProviderId;
   env?: NodeJS.ProcessEnv;
+  /** Providers configured through /auth without a passing connection test. */
+  unverified?: Set<ProviderId>;
 }
 
 export type ProviderFactory = (ctx: ProviderContext) => ModelProvider;

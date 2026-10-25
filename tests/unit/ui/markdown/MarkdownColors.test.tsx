@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 
 // chalk decides color support when it is first imported (by Ink); force it before any import.
 vi.hoisted(() => {
@@ -15,6 +15,10 @@ const FIXTURES = path.resolve(__dirname, '../../../fixtures/markdown');
 const read = (name: string) => fs.readFileSync(path.join(FIXTURES, name), 'utf8');
 
 afterEach(() => cleanupSized());
+// Workers are reused across files: restore the environment so other suites render without color.
+afterAll(() => {
+  delete process.env['FORCE_COLOR'];
+});
 
 async function renderMd(source: string, color: boolean) {
   const ui = renderSized(<Markdown source={source} width={80} color={color} />, {

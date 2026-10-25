@@ -100,6 +100,8 @@ async function main(argv: string[]): Promise<number> {
     debug: args.debug,
     interactive: !nonInteractive,
     logger,
+    settingsPaths: { globalPath: loaded.globalPath, cwd },
+    env: process.env,
   });
 
   if (nonInteractive) {

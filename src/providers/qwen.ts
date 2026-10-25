@@ -1,8 +1,11 @@
+import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { z } from 'zod';
+import { resolveQwenBaseUrl } from '../config/defaults.js';
 import type { ToolDefinition } from '../tools/types.js';
 import { MaestroError, sanitizeCause } from '../utils/errors.js';
 import { redact } from '../utils/mask.js';
+import { createAnthropicErrorMapper, streamAnthropicProtocol } from './anthropicProtocol.js';
 import { CREDENTIAL_HINTS, describeProvider, DISPLAY_NAMES } from './status.js';
 import type {
   Message,
@@ -87,13 +90,14 @@ function mapFinishReason(reason: string | null | undefined): StopReason {
   }
 }
 
+function qwenSecrets(ctx: ProviderContext): Array<string | undefined> {
+  return [ctx.settings.providers.qwen.apiKey, (ctx.env ?? process.env)['DASHSCOPE_API_KEY']];
+}
+
 export function mapOpenAIError(err: unknown, ctx: ProviderContext): MaestroError {
-  const secrets = [
-    ctx.settings.providers.qwen.apiKey,
-    (ctx.env ?? process.env)['DASHSCOPE_API_KEY'],
-  ];
-  const clean = (s: string) => redact(s, secrets);
+  const clean = (s: string) => redact(s, qwenSecrets(ctx));
   const base = { providerId: 'qwen' as const, cause: sanitizeCause(err, clean) };
+  const baseUrl = resolveQwenBaseUrl(ctx.settings.providers.qwen);
 
   if (err instanceof OpenAI.AuthenticationError || err instanceof OpenAI.PermissionDeniedError) {
     return new MaestroError({
@@ -115,7 +119,7 @@ export function mapOpenAIError(err: unknown, ctx: ProviderContext): MaestroError
       ...base,
       category: 'network',
       message: clean(err.message || 'could not reach the Qwen endpoint'),
-      hint: `Check providers.qwen.baseUrl (${ctx.settings.providers.qwen.baseUrl}).`,
+      hint: `Check providers.qwen.baseUrl (${baseUrl}).`,
     });
   }
   if (
@@ -140,12 +144,60 @@ export function mapOpenAIError(err: unknown, ctx: ProviderContext): MaestroError
   return new MaestroError({ ...base, category: 'unknown', message: clean(msg) });
 }
 
+/** Error mapper for the Anthropic-compatible Qwen endpoint. */
+export function mapQwenAnthropicError(err: unknown, ctx: ProviderContext): MaestroError {
+  return createAnthropicErrorMapper({
+    providerId: 'qwen',
+    secrets: qwenSecrets(ctx),
+    credentialsMissing: false,
+    missingHint: CREDENTIAL_HINTS.qwen,
+    rejectedHint: CREDENTIAL_HINTS.qwen.replace('missing', 'missing or invalid'),
+    baseUrl: resolveQwenBaseUrl(ctx.settings.providers.qwen),
+    endpointName: 'the Qwen endpoint',
+  })(err);
+}
+
 export function createQwenProvider(ctx: ProviderContext): ModelProvider {
   const cfg = ctx.settings.providers.qwen;
   const env = ctx.env ?? process.env;
   const apiKey = env['DASHSCOPE_API_KEY'] || cfg.apiKey;
+  const baseURL = resolveQwenBaseUrl(cfg);
 
-  const client = apiKey ? new OpenAI({ apiKey, baseURL: cfg.baseUrl, maxRetries: 2 }) : undefined;
+  const noKey = (): ProviderEvent => ({
+    type: 'error',
+    error: new MaestroError({
+      providerId: 'qwen',
+      category: 'auth',
+      message: 'no API key configured',
+      hint: CREDENTIAL_HINTS.qwen,
+    }),
+  });
+
+  if (cfg.protocol === 'anthropic') {
+    const client = apiKey ? new Anthropic({ apiKey, baseURL, maxRetries: 2 }) : undefined;
+    return {
+      id: 'qwen',
+      displayName: DISPLAY_NAMES.qwen,
+      status: () => describeProvider('qwen', ctx),
+      async *stream(req: ProviderRequest): AsyncIterable<ProviderEvent> {
+        if (!client) {
+          yield noKey();
+          return;
+        }
+        // Anthropic-only extras (effort, server-side fallbacks) are not sent to third-party endpoints.
+        yield* streamAnthropicProtocol({
+          client,
+          providerId: 'qwen',
+          req,
+          model: req.model ?? cfg.model,
+          maxTokens: cfg.maxTokens,
+          mapError: (err) => mapQwenAnthropicError(err, ctx),
+        });
+      },
+    };
+  }
+
+  const client = apiKey ? new OpenAI({ apiKey, baseURL, maxRetries: 2 }) : undefined;
 
   return {
     id: 'qwen',
@@ -154,15 +206,7 @@ export function createQwenProvider(ctx: ProviderContext): ModelProvider {
 
     async *stream(req: ProviderRequest): AsyncIterable<ProviderEvent> {
       if (!client) {
-        yield {
-          type: 'error',
-          error: new MaestroError({
-            providerId: 'qwen',
-            category: 'auth',
-            message: 'no API key configured',
-            hint: CREDENTIAL_HINTS.qwen,
-          }),
-        };
+        yield noKey();
         return;
       }
 

@@ -30,6 +30,71 @@ function sink() {
   return { write: (s: string) => parts.push(s), text: () => parts.join('') };
 }
 
+describe('no secrets leak — /auth dialog', () => {
+  it(
+    'the typed key never appears in frames, notices, settings log lines or the debug log',
+    { timeout: 30_000 },
+    async () => {
+      const { mountApp, KEYS } = await import('../../helpers/appHarness.js');
+      const { waitForFrame, cleanupSized } = await import('../../helpers/renderSized.js');
+      const { fakeAntCli } = await import('../../helpers/fakeAnt.js');
+      const home = path.join(tmp, 'home');
+      const globalPath = path.join(home, '.maestro', 'settings.json');
+      const logPath = path.join(tmp, 'debug.log');
+      const logger = createLogger({ enabled: true, filePath: logPath, secrets: [QWEN_KEY] });
+      const ui = mountApp({
+        columns: 100,
+        rows: 30,
+        credentials: { credentials: { claude: 'env', qwen: 'none' } },
+        controller: {
+          settingsPaths: { globalPath, cwd: home },
+          env: {},
+          logger,
+          debug: true,
+          setupDeps: {
+            testConnection: async () => ({ ok: true, latencyMs: 1 }),
+            ant: fakeAntCli(),
+            env: {},
+            platform: 'win32',
+          },
+        },
+      });
+      try {
+        await waitForFrame(ui, 'Type a message');
+        ui.stdin.write('/auth qwen');
+        await new Promise((r) => setTimeout(r, 30)); // let the prompt state update before Enter
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'Conectar provedor');
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'Protocolo');
+        ui.stdin.write(KEYS.enter); // OpenAI compatível (default)
+        await waitForFrame(ui, 'Endpoint');
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'Chave de API');
+        ui.stdin.write(QWEN_KEY);
+        await new Promise((r) => setTimeout(r, 30));
+        expect(ui.lastFrame()).not.toContain(QWEN_KEY);
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'Modelo');
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'Usar qwen como provedor ativo?');
+        ui.stdin.write(KEYS.enter);
+        await waitForFrame(ui, 'qwen configurado e ativo');
+        const allFrames = ui.stdout.frames.join('\n');
+        expect(allFrames).not.toContain(QWEN_KEY);
+        expect(ui.controller.notices.map((n) => n.text).join('\n')).not.toContain(QWEN_KEY);
+        const log = fs.readFileSync(logPath, 'utf8');
+        expect(log).toMatch(/settings\.write/);
+        expect(log).not.toContain(QWEN_KEY);
+        // the key is stored only in settings.json itself
+        expect(fs.readFileSync(globalPath, 'utf8')).toContain(QWEN_KEY);
+      } finally {
+        cleanupSized();
+      }
+    },
+  );
+});
+
 describe('no secrets leak', () => {
   it('/model output masks both keys', async () => {
     const ctx = makeCtx(
@@ -41,6 +106,7 @@ describe('no secrets leak', () => {
       ctx,
       tools: [],
       system: 's',
+      interactive: false, // textual table (the interactive form opens a dialog)
     });
     await controller.submit('/model');
     const text = controller.notices.map((n) => n.text).join('\n');

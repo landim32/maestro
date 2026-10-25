@@ -1,28 +1,39 @@
 import { App } from '../../src/ui/App.js';
 import { SessionController } from '../../src/session/controller.js';
+import type { ControllerOptions } from '../../src/session/controller.js';
 import { Session } from '../../src/session/session.js';
-import type { ModelProvider, ProviderEvent } from '../../src/providers/types.js';
+import type { ModelProvider, ProviderEvent, ProviderId } from '../../src/providers/types.js';
+import type { SettingsInput } from '../../src/config/schema.js';
 import { makeCtx } from './context.js';
 import { createFakeProvider, textProvider } from './fakeProvider.js';
+import type { FakeProvider } from './fakeProvider.js';
 import { renderSized } from './renderSized.js';
 import type { RenderSizedOptions } from './renderSized.js';
 
 export interface HarnessOptions extends RenderSizedOptions {
-  provider?: ModelProvider;
+  provider?: FakeProvider;
+  /** Provider per id (for /model switching tests). */
+  providers?: Partial<Record<ProviderId, ModelProvider>>;
   ui?: { altScreen: boolean; mouse: boolean; color?: boolean };
   env?: NodeJS.ProcessEnv;
+  settings?: SettingsInput;
+  credentials?: Parameters<typeof makeCtx>[1];
+  controller?: Partial<ControllerOptions>;
 }
 
-/** Renders the real App with a fake provider in a sized fake terminal. */
+/** Renders the real App with fake providers in a sized fake terminal. */
 export function mountApp(opts: HarnessOptions = {}) {
   const provider = opts.provider ?? textProvider(['Hello from fake', 'Second answer']);
   const session = new Session({ cwd: 'C:\\work\\demo', activeProviderId: 'claude' });
+  const ctx = makeCtx(opts.settings ?? {}, { ...opts.credentials, env: opts.env ?? {} });
   const controller = new SessionController({
     session,
-    ctx: makeCtx(),
+    ctx,
     tools: [],
     system: 'sys',
-    providerOverride: () => provider,
+    env: opts.env ?? {},
+    providerOverride: (id) => opts.providers?.[id] ?? provider,
+    ...opts.controller,
   });
   let exited = 0;
   controller.on('exit', () => exited++);
@@ -60,7 +71,11 @@ export const KEYS = {
   end: '\x1b[F',
   shiftUp: '\x1b[1;2A',
   shiftDown: '\x1b[1;2B',
+  up: '\x1b[A',
+  down: '\x1b[B',
   enter: '\r',
+  esc: '\x1b',
+  ctrlU: '\x15',
   wheelUp: '\x1b[<64;1;1M',
   wheelDown: '\x1b[<65;1;1M',
 };

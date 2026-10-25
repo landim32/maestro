@@ -53,7 +53,7 @@ describe('qwen provider — construction and status', () => {
     expect(mock.ctorSpy).toHaveBeenCalledWith(
       expect.objectContaining({
         apiKey: 'sk-env-2222',
-        baseURL: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+        baseURL: 'https://token-plan.maas.qwencloudapi.com/compatible-mode/v1',
       }),
     );
   });

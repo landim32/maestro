@@ -32,13 +32,18 @@ export const claudeProviderSchema = z.strictObject({
   fallbacks: z.boolean().default(DEFAULTS.claude.fallbacks),
 });
 
+export const qwenProtocolSchema = z.enum(['openai', 'anthropic']);
+
 export const qwenProviderSchema = z.strictObject({
   _comment: comment,
   enabled: z.boolean().default(false),
+  /** Wire protocol of the endpoint: OpenAI-compatible (chat completions) or Anthropic-compatible (messages). */
+  protocol: qwenProtocolSchema.default(DEFAULTS.qwen.protocol),
   model: z.string().min(1, 'must not be empty').default(DEFAULTS.qwen.model),
   maxTokens: maxTokensSchema.default(DEFAULTS.qwen.maxTokens),
   apiKey: apiKeySchema,
-  baseUrl: baseUrlSchema.default(DEFAULTS.qwen.baseUrl),
+  /** Optional: defaults to the protocol's Qwen Cloud endpoint (see resolveQwenBaseUrl). */
+  baseUrl: baseUrlSchema.optional(),
 });
 
 export const toolsSettingsSchema = z.strictObject({
