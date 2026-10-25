@@ -63,7 +63,7 @@ const MessageItem = memo(
           <Text color={color ? 'cyan' : undefined} bold>
             ›{' '}
           </Text>
-          <Text>{textOf(message)}</Text>
+          <Text>{message.display ?? textOf(message)}</Text>
         </Box>
       );
     }

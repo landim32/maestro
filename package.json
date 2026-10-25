@@ -14,6 +14,7 @@
   "main": "dist/index.js",
   "files": [
     "dist",
+    "assets",
     "README.md",
     "LICENSE",
     "THIRD_PARTY_NOTICES.md"
@@ -25,7 +26,8 @@
     "build": "tsc -p tsconfig.json && node scripts/version.mjs --write dist/version.json",
     "dev": "node scripts/version.mjs --write src/version.json && tsx src/index.ts",
     "start": "node dist/index.js",
-    "test": "vitest run",
+    "test": "vitest run --exclude tests/integration/ui/perf.test.tsx && npm run test:perf",
+    "test:perf": "vitest run tests/integration/ui/perf.test.tsx",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",

@@ -33,6 +33,7 @@ import { SetupDriver } from '../setup/driver.js';
 import type { SetupDeps } from '../setup/driver.js';
 import { DEFAULT_COMMANDS, executeSlash } from './commands.js';
 import type { SlashCommand } from './commands.js';
+import type { SpecKitService } from '../speckit/service.js';
 import type { InputHistory } from './history.js';
 import type { Session } from './session.js';
 import { SessionBusyError } from './session.js';
@@ -81,6 +82,8 @@ export interface ControllerOptions {
   settingsLoader?: () => LoadedSettingsLike;
   /** Persistent input history (interactive only; absent in `-p`). See contracts/history.md. */
   history?: InputHistory;
+  /** Native Spec Kit host (commands, script interception); absent → no /speckit.* commands. */
+  specKit?: SpecKitService;
 }
 
 /** In interactive mode the UI answers through controller.confirm(); the promise itself never settles. */
@@ -94,7 +97,8 @@ export interface ControllerEvents {
 /** Glue between Session, providers, tools, dialogs and the UI (interactive or non-interactive). */
 export class SessionController extends EventEmitter<ControllerEvents> {
   readonly session: Session;
-  readonly commands: SlashCommand[];
+  commands: SlashCommand[];
+  readonly specKit?: SpecKitService;
   readonly tools: ToolDefinition[];
   readonly system: string;
   readonly debug: boolean;
@@ -127,6 +131,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   private transientSeq = 0;
   /** `ask_user` dialog state while `session.state === 'awaiting_answer'` (contracts/ask-user.md). */
   questionFlow?: AskUserFlowState;
+  /** True when the last slash command refused to run (unknown or missing prerequisites). */
+  lastCommandBlocked = false;
 
   constructor(opts: ControllerOptions) {
     super();
@@ -140,7 +146,15 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.logger = opts.logger ?? noopLogger;
     this.env = opts.env ?? opts.ctx.env ?? process.env;
     this.settingsPaths = opts.settingsPaths;
-    this.commands = opts.commands ?? DEFAULT_COMMANDS;
+    this.specKit = opts.specKit;
+    this.commands = [...(opts.commands ?? DEFAULT_COMMANDS), ...(opts.specKit?.commands() ?? [])];
+    if (this.specKit) {
+      this.specKit.onStep = (step, result) => {
+        if (result.ok) this.notice(`⚙ speckit ${step}  ·  ${result.summary}`, 'info');
+        else this.notice(`⚠ speckit ${step}: ${firstLine(result.output)}`, 'warn');
+        for (const w of result.warnings ?? []) this.notice(`  ${w}`, 'warn');
+      };
+    }
     this.providerOverride = opts.providerOverride;
     this.settingsWriter = opts.settingsWriter;
     this.settingsLoader = opts.settingsLoader;
@@ -170,6 +184,14 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     return (
       this.session.modelOverride ?? this.ctx.settings.providers[this.session.activeProviderId].model
     );
+  }
+
+  /** Re-reads the Spec Kit command files (after /speckit.init). */
+  refreshCommands(): void {
+    if (!this.specKit) return;
+    this.specKit.refresh();
+    this.commands = [...this.commands.filter((c) => !c.origin), ...this.specKit.commands()];
+    this.emit('change');
   }
 
   /** Lazily created driver for the /auth and /model dialogs. */
@@ -455,12 +477,16 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     }
     // Recorded before executing so that /clear and /exit are kept too (contracts/history.md § 2).
     this.history?.push(input);
-    if (await executeSlash(input, this)) return undefined;
+    const slash = await executeSlash(input, this);
+    this.lastCommandBlocked = Boolean(slash.blocked);
+    if (slash.handled && !slash.turn) return undefined;
     if (this.session.state !== 'idle') {
       this.notice('A response is still in progress. Press Esc to cancel it first.', 'warn');
       return undefined;
     }
-    if (!this.session.pushUser(input)) return undefined;
+    // A prompt command (Spec Kit) sends the composed prompt but shows the typed line.
+    const text = slash.turn ? slash.turn.prompt : input;
+    if (!this.session.pushUser(text, slash.turn?.display)) return undefined;
 
     this.partialText = '';
     const provider = this.activeProvider;
@@ -480,6 +506,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
         tools: this.tools,
         toolSettings: this.ctx.settings.tools,
         approvalMode: () => this.approvalMode,
+        intercept: this.specKit?.intercept,
       },
       {
         onDelta: (t) => {

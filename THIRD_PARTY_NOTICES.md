@@ -37,6 +37,20 @@ architecture (zod schemas, pure reducers, Ink components).
 qwen-code is derived from gemini-cli; its notices are retained through the qwen-code files
 listed above.
 
+## spec-kit
+
+- Repository: https://github.com/github/spec-kit
+- Reference: tag `v1.2.3`, commit `8ac9e8103319d98099cfc274a2517bb2b621626c` (2026-10-22)
+- License: MIT (text below)
+- Copyright GitHub, Inc.
+
+Maestro bundles the Spec Kit templates, command prompts and helper scripts under
+`assets/speckit/` so that `/speckit.init` can set a project up offline and the `/speckit.*`
+commands work without the `specify` CLI. `assets/speckit/NOTICE` lists every file, the ones
+copied verbatim and the three command prompts modified for Maestro (`specify.md`, `plan.md`,
+`clarify.md`). The native steps in `src/speckit/` reimplement the behaviour of
+`scripts/{bash,powershell,python}`; Maestro never executes the bundled scripts.
+
 ## Apache License 2.0
 
 ```text
@@ -242,4 +256,30 @@ listed above.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+```
+
+## MIT License (spec-kit)
+
+```text
+MIT License
+
+Copyright GitHub, Inc.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 ```

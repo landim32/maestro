@@ -97,6 +97,8 @@ export const KEYS = {
   enter: '\r',
   esc: '\x1b',
   ctrlU: '\x15',
+  right: '\x1b[C',
+  left: '\x1b[D',
   wheelUp: '\x1b[<64;1;1M',
   wheelDown: '\x1b[<65;1;1M',
 };

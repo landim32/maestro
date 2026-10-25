@@ -1,3 +1,4 @@
+import type { ProjectContext } from '../config/projectContext.js';
 import { APP_NAME } from '../version.js';
 
 /**
@@ -10,6 +11,8 @@ export function buildSystemPrompt(opts: {
   toolsEnabled: boolean;
   /** The `ask_user` tool is available (default true). */
   askUser?: boolean;
+  /** MAESTRO.md / CLAUDE.md of the project, appended as guidelines (specs/006). */
+  projectContext?: ProjectContext;
   platform?: NodeJS.Platform;
 }): string {
   const platform = opts.platform ?? process.platform;
@@ -38,6 +41,14 @@ export function buildSystemPrompt(opts: {
   if (opts.askUser ?? true) {
     lines.push(
       '- When you need a decision from the user to continue, call ask_user with concrete options instead of ending your turn with a question; the user can always answer "Other" in free text.',
+    );
+  }
+  if (opts.projectContext) {
+    lines.push(
+      '',
+      `# Project guidelines (${opts.projectContext.file})`,
+      '',
+      opts.projectContext.text.trim(),
     );
   }
   return lines.join('\n');

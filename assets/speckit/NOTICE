@@ -1,0 +1,33 @@
+Spec Kit assets bundled with Maestro
+====================================
+
+Source:   https://github.com/github/spec-kit
+Version:  v1.2.3 (tag), commit 8ac9e8103319d98099cfc274a2517bb2b621626c, released 2026-10-22
+License:  MIT License, Copyright GitHub, Inc.
+          The full license text is reproduced in THIRD_PARTY_NOTICES.md at the root of the
+          Maestro repository and inside the Maestro package.
+
+Files copied verbatim from the tag above:
+  templates/spec-template.md, templates/plan-template.md, templates/tasks-template.md,
+  templates/checklist-template.md, templates/constitution-template.md,
+  templates/commands/{analyze,checklist,constitution,converge,implement,tasks,taskstoissues}.md,
+  scripts/bash/*.sh, scripts/powershell/*.ps1, scripts/python/*.py
+
+Files copied from spec-kit 0.4.5.dev0 (the agent-file template left the core in 1.x):
+  templates/agent-file-template.md
+
+Files modified for Maestro (the original text is at the tag above):
+  templates/commands/specify.md
+    - frontmatter: added `scripts` (create-new-feature) so Maestro resolves {SCRIPT}
+    - steps 2–3: the feature directory, spec file, feature.json and git branch are created by the
+      native create-new-feature step instead of a hook plus manual directory creation
+    - clarification questions: note to ask them through Maestro's ask_user tool
+  templates/commands/plan.md
+    - Phase 1: added step 4 "Agent context update" (native update-agent-context step,
+      MAESTRO.md plus existing agent files)
+  templates/commands/clarify.md
+    - question loop: note to ask each question through Maestro's ask_user tool
+
+Maestro never executes the bundled scripts; they are installed into projects by /speckit.init so
+that other coding agents keep working on the same repository. The native steps in Maestro
+(src/speckit/) reproduce their behaviour.

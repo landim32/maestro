@@ -102,6 +102,8 @@ maestro --approval-mode auto         # modo de aprovação inicial (default | au
 maestro --yolo                       # = --approval-mode yolo
 maestro --no-altscreen               # desenha no buffer principal (sem tela alternativa)
 maestro --debug                      # erros detalhados + ~/.maestro/debug.log
+maestro -p "/speckit.tasks"          # comandos do Spec Kit também funcionam em -p
+maestro --version                    # versão do Maestro e do Spec Kit embutido
 ```
 
 A sessão interativa ocupa a tela inteira do terminal (tela alternativa, restaurada ao sair), abre com o banner "Maestro" e formata as respostas em markdown: títulos, listas, negrito, código com destaque de sintaxe e tabelas. A conversa rola dentro da interface: Page Up / Page Down (uma tela), Shift+↑ / Shift+↓ (uma linha), Home / End, e a roda do mouse onde o terminal a reporta. Um indicador à direita mostra a posição. Em `settings.json`, `ui.altScreen` e `ui.mouse` desligam esses recursos; `MAESTRO_NO_ALTSCREEN=1` também desliga a tela alternativa.
@@ -115,6 +117,8 @@ Na sessão:
 | `/model qwen` / `/model claude qwen-max` | Troca provedor (e modelo) mantendo a conversa; um modelo novo entra na lista do provedor                                                    |
 | Tab / Shift+Tab                          | Avança / volta o modo de aprovação (veja abaixo); vale só para a sessão                                                                     |
 | `/approval-mode [modo]`                  | Mostra ou troca o modo de aprovação por texto                                                                                               |
+| `/speckit.specify`, `/speckit.plan`, …   | Fluxo Spec Kit nativo (veja abaixo); `/speckit.init` instala, `/speckit.status` mostra a feature atual                                      |
+| → (seta direita)                         | Completa a primeira sugestão de comando enquanto o texto começa com `/`                                                                     |
 | ↑ / ↓                                    | Percorre o histórico de entradas (mensagens e comandos), do mais recente ao mais antigo; ↓ devolve o texto que estava sendo digitado        |
 | `/clear`                                 | Nova conversa                                                                                                                               |
 | `/help`                                  | Lista comandos                                                                                                                              |
@@ -138,6 +142,18 @@ Como no qwen-code, o Maestro tem quatro níveis de autonomia para as ações do 
 Ações executadas sem perguntar aparecem na transcrição com o resumo que o diálogo mostraria e o modo que as liberou. Em `-p`, o modo decide o que roda; o que exigiria confirmação é recusado (padrão: tudo).
 
 **Comandos destrutivos** são reconhecidos por uma lista de padrões: remoção recursiva ou forçada (`rm -rf`, `rmdir /s`, `Remove-Item -Recurse`), descarte de alterações ou reescrita de histórico git (`reset --hard`, `clean -f`, `checkout -- .`, `branch -D`, `rebase`, `commit --amend`, `stash drop`), envio forçado ao remoto (`push --force`, `-f`, `+ref`, `--delete`), formatação ou escrita direta em disco (`mkfs`, `format`, `diskpart`, `dd if=`), desligamento/reinício, permissões em massa (`chmod -R`, `icacls /T`), redirecionamento para pastas de sistema, `curl … | sh` e `sudo`. É uma conveniência para evitar acidentes, não uma barreira de segurança; em repositórios sem controle de versão prefira _Pedir permissão_. Em nenhum modo o Maestro deixa de confinar escritas e comandos à pasta de trabalho.
+
+### Spec Kit nativo
+
+O Maestro hospeda o [Spec Kit](https://github.com/github/spec-kit) do GitHub sem Claude Code, sem a CLI `specify` e sem shell: os comandos `/speckit.*` (constitution, specify, clarify, plan, tasks, analyze, checklist, implement, converge, taskstoissues) funcionam com qualquer provedor, inclusive no modo `-p`.
+
+- **Descoberta**: arquivos de comando em `.maestro/commands/`, depois na pasta da integração registrada em `.specify/integration.json` (por exemplo `.claude/commands/` de um projeto inicializado pela CLI `specify`), depois os embutidos (spec-kit v1.2.3). O primeiro nome encontrado vence; `/help` mostra a origem. Digite `/` para ver sugestões; **→** completa a primeira.
+- **Scripts executados nativamente**: quando o modelo "roda" `.specify/scripts/bash/…`, `…/powershell/…ps1` ou `…/python/…py` (criar feature, configurar plano/tarefas, verificar pré‑requisitos, resolver templates, atualizar contexto do agente), o Maestro executa o passo equivalente em TypeScript e devolve o mesmo JSON. Nenhum PowerShell, bash ou Python é iniciado; o único programa externo é o `git`. Esses passos não pedem confirmação e aparecem como `⚙ speckit <passo>` na transcrição.
+- **Pré‑requisitos**: um comando que precisa de `plan.md`, `tasks.md` ou de uma feature ativa é bloqueado com a mensagem do script antes de gastar tokens (código 2 em `-p`).
+- **Projeto novo**: `/speckit.init` cria `.specify/` (templates, scripts para outros agentes, `memory/constitution.md`), `.maestro/commands/` e um manifesto de hashes; `/speckit.init --upgrade` substitui só os arquivos que você não modificou. `/speckit.status` mostra a feature atual, os artefatos e as versões.
+- **Branch da feature**: `/speckit.specify` cria e ativa a branch `NNN-nome` em repositórios git (`"speckit": { "createBranch": false }` desliga). A feature é rastreada por `.specify/feature.json`, pela branch git ou pela pasta mais recente em `specs/`.
+- **Contexto do projeto**: `MAESTRO.md` na raiz (ou `CLAUDE.md`, se só ele existir) entra no prompt de sistema; o `/speckit.plan` o mantém atualizado com as tecnologias do plano.
+- **Perguntas**: as clarificações do `specify` e do `clarify` chegam como diálogos `ask_user`.
 
 ### Perguntas do modelo (`ask_user`)
 
@@ -178,4 +194,5 @@ O Maestro é software livre sob a [licença MIT](./LICENSE). É e continuará se
 
 - [qwen-code](https://github.com/QwenLM/qwen-code) (Qwen Team, Alibaba; Apache-2.0): os modos de aprovação e a ferramenta `ask_user` foram adaptados de lá (identificadores e ciclo dos modos, esquema e formato de resposta da pergunta, teclas do diálogo, cores do indicador). Os arquivos adaptados trazem o cabeçalho de atribuição.
 - [gemini-cli](https://github.com/google-gemini/gemini-cli) (Google LLC; Apache-2.0): projeto do qual o qwen-code deriva.
+- [spec-kit](https://github.com/github/spec-kit) (GitHub; MIT): os templates, prompts de comando e scripts do Spec Kit v1.2.3 vêm embutidos em `assets/speckit/`; três prompts foram adaptados ao Maestro (listados em `assets/speckit/NOTICE`).
 - [Claude Code](https://claude.com/claude-code): inspiração para a experiência de uso (histórico ↑/↓, prompt, atalhos); nenhum código foi copiado.

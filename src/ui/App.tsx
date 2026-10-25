@@ -163,6 +163,7 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
       <InputPrompt
         active={snap.state === 'idle' && !dialog}
         historyItems={snap.historyItems}
+        commands={snap.commands}
         onSubmit={onSubmit}
         placeholder={
           dialog
