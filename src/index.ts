@@ -14,6 +14,8 @@ import { createLogger } from './utils/logger.js';
 import { isInteractive } from './utils/tty.js';
 import { debugLogPath, historyPath } from './config/paths.js';
 import { fileHistoryStore, InputHistory } from './session/history.js';
+import { SpecKitService } from './speckit/service.js';
+import { loadProjectContext } from './config/projectContext.js';
 import { VERSION } from './version.js';
 
 async function main(argv: string[]): Promise<number> {
@@ -99,6 +101,11 @@ async function main(argv: string[]): Promise<number> {
     activeProviderId: ctx.activeId,
     modelOverride: pf.switched ? undefined : args.model,
   });
+  // Project guidelines (MAESTRO.md, else CLAUDE.md) go into the system prompt (specs/006 US4).
+  const projectContext = loadProjectContext(cwd);
+  if (projectContext) {
+    logger.log('context.loaded', { file: projectContext.file, bytes: projectContext.bytes });
+  }
   const controller = new SessionController({
     session,
     ctx,
@@ -107,6 +114,7 @@ async function main(argv: string[]): Promise<number> {
       cwd,
       toolsEnabled: hasWorkspaceTools(tools),
       askUser: tools.some((t) => t.name === 'ask_user'),
+      projectContext,
     }),
     debug: args.debug,
     interactive: !nonInteractive,
@@ -117,11 +125,31 @@ async function main(argv: string[]): Promise<number> {
     history: nonInteractive
       ? undefined
       : new InputHistory(fileHistoryStore(historyPath(process.env), logger)),
+    // Native Spec Kit host: /speckit.* commands and scripts run natively (specs/006).
+    specKit: new SpecKitService({
+      cwd,
+      env: process.env,
+      settings: loaded.settings.speckit,
+      logger,
+    }),
   });
 
   if (nonInteractive) {
     const { runNonInteractive } = await import('./cli/nonInteractive.js');
     return runNonInteractive({ controller, prompt: args.prompt! });
+  }
+
+  if (projectContext?.file === 'CLAUDE.md') {
+    controller.notice(
+      'Contexto do projeto: CLAUDE.md (crie MAESTRO.md para um contexto próprio).',
+      'info',
+    );
+  }
+  if (projectContext?.large) {
+    controller.notice(
+      `Contexto do projeto grande (${Math.round(projectContext.bytes / 1024)} KB); considere enxugar ${projectContext.file}.`,
+      'warn',
+    );
   }
 
   const { runInteractive } = await import('./cli/interactive.js');

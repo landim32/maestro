@@ -20,6 +20,8 @@ export interface Message {
   createdAt: Date;
   providerId?: ProviderId;
   model?: string;
+  /** Transcript label when `content` is a composed prompt (e.g. `/speckit.plan`); never sent to the model. */
+  display?: string;
 }
 
 export interface ProviderRequest {

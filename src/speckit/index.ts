@@ -1,0 +1,14 @@
+export { SpecKitService } from './service.js';
+export type { SpecKitServiceOptions, StepListener } from './service.js';
+export { discoverCommands, preflightFor, renderBundledCommand } from './discovery.js';
+export type { SpecKitCommandFile } from './discovery.js';
+export { buildPromptTurn, renderCommandBody } from './prompt.js';
+export type { PromptTurn } from './prompt.js';
+export { parseInvocation, isInvocationError } from './invocation.js';
+export type { StepRequest } from './invocation.js';
+export { runStep } from './steps/index.js';
+export type { StepContext, StepResult } from './steps/index.js';
+export { bundledAssets, assetsAt } from './assets.js';
+export type { AssetsPort } from './assets.js';
+export { systemGit, nullGit } from './git.js';
+export type { GitPort } from './git.js';

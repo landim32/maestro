@@ -46,13 +46,14 @@ export class Session extends EventEmitter<SessionEvents> {
   }
 
   /** Returns false (and does nothing) for empty/whitespace-only text (FR-007). */
-  pushUser(text: string): boolean {
+  pushUser(text: string, display?: string): boolean {
     if (text.trim() === '') return false;
     this.history.push({
       id: randomUUID(),
       role: 'user',
       content: [{ type: 'text', text }],
       createdAt: new Date(),
+      display,
     });
     this.changed();
     return true;

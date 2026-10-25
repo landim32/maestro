@@ -120,6 +120,15 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     expect(issuesOf({ tools: { maxOutputChars: 10 } })[0]).toMatch(/^tools\.maxOutputChars: /);
   });
 
+  /** specs/006 contracts/init-and-context.md § 4 */
+  it('speckit.createBranch defaults to true and unknown speckit keys are rejected', () => {
+    expect(settingsSchema.parse({}).speckit).toEqual({ createBranch: true });
+    expect(settingsSchema.parse({ speckit: { createBranch: false } }).speckit.createBranch).toBe(
+      false,
+    );
+    expect(issuesOf({ speckit: { branch: true } })[0]).toMatch(/^speckit\.branch: unknown key/);
+  });
+
   /** contracts/approval-modes.md § 1, § 5 */
   it('tools.approvalMode accepts the four modes and rejects anything else', () => {
     for (const mode of ['default', 'auto-edit', 'auto', 'yolo'] as const) {

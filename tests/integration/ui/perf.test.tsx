@@ -30,7 +30,8 @@ describe('performance with ~5,000 transcript lines (SC-004)', () => {
       ui.stdin.write(KEYS.enter);
       await waitFor(
         () => ui.session.history.length === 2 * (i + 1) && (ui.lastFrame() ?? '').includes('ready'),
-        10_000,
+        // generous: the full suite also runs git-heavy Spec Kit tests in parallel (specs/006)
+        30_000,
         `answer ${i}`,
       );
     }

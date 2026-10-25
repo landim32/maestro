@@ -4,6 +4,9 @@ Auto-generated from all feature plans. Last updated: 2026-10-25
 
 ## Active Technologies
 
+- TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `node:fs`, `node:child_process` (`execFileSync('git', …)` para branches), `node:crypto` (sha256 do manifesto), `zod` (chave `speckit`), `ink` (sugestões no prompt). Parser YAML mínimo próprio para frontmatter e manifestos. Nenhuma nova. (006-native-spec-kit)
+- novos `assets/speckit/` no pacote (templates, comandos e scripts v1.2.3 + NOTICE); por projeto, `.specify/` (templates, scripts, `memory/`, `feature.json`, `init-options.json`, `integration.json`, `integrations/maestro.manifest.json`), `.maestro/commands/`, `MAESTRO.md`; `settings.json` ganha `speckit.createBranch`. (006-native-spec-kit)
+
 - TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `key.tab`/`key.shift`), `zod` 4 (`z.strictObject` + `z.toJSONSchema` para o esquema de `ask_user`), `yargs` (novos argumentos). Nenhuma nova. (005-approval-modes-ask-user)
 - `settings.json` ganha `tools.approvalMode` (lido; a troca por TAB não grava). Novos arquivos de repositório: `THIRD_PARTY_NOTICES.md`; `LICENSE`, `package.json`, `README.md`, `.specify/memory/constitution.md` alterados. (005-approval-modes-ask-user)
 
@@ -37,6 +40,8 @@ src/
 │   ├── dialogs/        # DialogHost, DialogFrame, SelectList, TextField (secret), ProgressView, ResultView, AuthDialog, ModelDialog, AskUserDialog [attrib]
 │   └── hooks/          # useSession, useKeyboard (+scroll keys, Tab mode cycle, dialog/question routing), useViewport (reducer), useMouseWheel (SGR), useTerminalCapabilities
 ├── setup/              # methods.ts (catalogue), authFlow.ts + modelFlow.ts + askUserFlow.ts [attrib] (pure reducers), driver.ts (effects), connectionTest.ts, antCli.ts, installHints.ts, dialog.ts
+├── speckit/            # native Spec Kit host: discovery.ts, prompt.ts + preamble.ts, invocation.ts (script dialects), feature.ts, naming.ts, numbering.ts, templates.ts (layers), git.ts, steps/* (native steps), init.ts (+manifest), status.ts, service.ts
+assets/speckit/         # bundled spec-kit v1.2.3 (MIT): VERSION, NOTICE, templates/, templates/commands/, scripts/{bash,powershell,python}
 ├── config/writer.ts    # patch-by-path, validated, atomic settings.json writes
 └── utils/              # mask.ts, errors.ts (MaestroError), tty.ts, logger.ts
 tests/
@@ -49,7 +54,7 @@ THIRD_PARTY_NOTICES.md      # qwen-code / gemini-cli notices + Apache-2.0 text (
 
 - `npm run build` — tsc → `dist/` + `dist/version.json` (GitVersion-derived stamp)
 - `npm run dev` — run from source (tsx); stamps `src/version.json` (gitignored)
-- `npm test` — vitest (no network)
+- `npm test` — vitest (no network); the suite runs first and `tests/integration/ui/perf.test.tsx` runs afterwards in isolation (`npm run test:perf`) because its latency budgets are meaningless under the git-heavy Spec Kit tests
 - `npm run lint` / `npm run format` / `npm run typecheck`
 - `npm run version:print` / `version:json` / `version:sync [semver]` — `scripts/version.mjs` reproduces GitVersion.yml (tags + commit prefixes + branch labels); CI passes the real GitVersion outputs through `GITVERSION_*` env vars. `src/version.ts` reads the stamp next to it, falling back to `package.json`. Never hardcode the version.
 - `node dist/index.js --help`
@@ -72,14 +77,15 @@ THIRD_PARTY_NOTICES.md      # qwen-code / gemini-cli notices + Apache-2.0 text (
 - Approval policy lives in `src/tools/approval.ts` (pure): tools declare `kind: 'read' | 'edit' | 'command' | 'question'` (no `requiresConfirmation`), `classifyAction` turns a `command` into `destructive` via `DESTRUCTIVE_PATTERNS`, and `needsConfirmation(mode, kind)` is the FR-003 table. `runTurn` receives `approvalMode: () => ApprovalMode` (a getter, so Tab mid-turn applies to the next call) and reports auto-approved actions through `onAutoApproved`. The live mode is `SessionController.approvalMode` (Tab / `/approval-mode`, session only — never written to settings); the initial value is `tools.approvalMode` (`--approval-mode`, `--yolo`). Destructive patterns are a convenience, not a security boundary; `resolveInsideCwd` applies in every mode.
 - `ask_user` (`src/tools/askUser.ts`, `kind: 'question'`) never goes through `needsConfirmation` and stays available with `--no-tools` (`toolsFor`). It reaches the UI through `ToolContext.ask` → `Session.pendingQuestion` (`awaiting_answer`) → `SessionController.questionFlow` driven by the pure reducer `src/setup/askUserFlow.ts`; `AskUserDialog` renders in the confirmation slot. Free text typed in "Outro…" goes to the model only: never to `history.jsonl` nor to logs (`noSecrets` test). `multiSelect` is `.optional()` (not `.default`) so the JSON Schema sent to the model keeps it non-required.
 - Code adapted from qwen-code (Apache-2.0) must start with the attribution header (see `src/tools/approval.ts`) and be listed in `THIRD_PARTY_NOTICES.md`; `tests/unit/license/attribution.test.ts` fails on a missing header, an unlisted Apache header, or a `package.json` without `license: MIT`. The project is and stays open-source (constitution §VI–VII).
+- Spec Kit is hosted natively by `src/speckit/` (specs/006). Command files are discovered in `.maestro/commands/` → the active integration's folder (`.specify/integration.json`, e.g. `.claude/commands/`) → the bundled v1.2.3 copies in `assets/speckit/` (MIT; never edit the assets except through `assets/speckit/NOTICE`-documented modifications). A `/speckit.*` command is a **prompt command**: `SlashCommand.run` returns a `PromptTurn` (`display` for the transcript, `prompt` = preamble + body) and the controller runs the turn; `Message.display` keeps the typed line in the UI. The helper scripts are **never executed**: `TurnOptions.intercept` (before the approval policy) turns any `run_command` matching `.specify/scripts/{bash,powershell,python}/*` (three dialects, `parseInvocation`) into a native step (`runStep` over an injectable `StepContext`: git via `execFile`, assets, clock) that returns the scripts' JSON. Steps are pure modules under `src/speckit/steps/`; feature resolution follows env → `feature.json` → git branch → newest `specs/` dir; `createFeature` also creates the git branch (`speckit.createBranch`). Preflight (`preflightFor`) blocks a command with the script's own error before the model is called (`CommandBlocked` → `-p` exits 2). `/speckit.init [--upgrade]` installs from the assets with a sha256 manifest (`.specify/integrations/maestro.manifest.json`); `MAESTRO.md` (else `CLAUDE.md`) is appended to the system prompt by `config/projectContext.ts`.
 
 ## Recent Changes
+
+- 006-native-spec-kit: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `node:fs`, `node:child_process` (`execFileSync('git', …)` para branches), `node:crypto` (sha256 do manifesto), `zod` (chave `speckit`), `ink` (sugestões no prompt). Parser YAML mínimo próprio para frontmatter e manifestos. Nenhuma nova.
 
 - 005-approval-modes-ask-user: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `key.tab`/`key.shift`), `zod` 4 (`z.strictObject` + `z.toJSONSchema` para o esquema de `ask_user`), `yargs` (novos argumentos). Nenhuma nova.
 
 - 004-history-model-catalog: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput`), `zod` 4 (esquema de `models`), `node:fs` (append/rename). Nenhuma nova.
-
-- 003-auth-provider-setup: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `isActive`), `@anthropic-ai/sdk` (`models.retrieve` para teste), `openai` (`chat.completions.create` mínimo para teste), `zod` (validação antes de gravar), `node:child_process` (CLI `ant`). Nenhuma nova.
 
 <!-- MANUAL ADDITIONS START -->
 

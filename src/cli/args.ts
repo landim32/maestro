@@ -3,6 +3,7 @@ import { PROVIDER_IDS } from '../config/schema.js';
 import type { ProviderId } from '../config/schema.js';
 import { APPROVAL_MODES, parseApprovalMode } from '../tools/approval.js';
 import type { ApprovalMode } from '../tools/approval.js';
+import { bundledAssets } from '../speckit/assets.js';
 import { APP_NAME, VERSION } from '../version.js';
 
 export interface ParsedArgs {
@@ -125,5 +126,5 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
 }
 
 export function versionText(): string {
-  return `${APP_NAME} ${VERSION}`;
+  return `${APP_NAME} ${VERSION}\nspec-kit ${bundledAssets().version} (embutido)`;
 }

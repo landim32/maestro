@@ -93,6 +93,11 @@ export const INITIAL_SETTINGS = {
     altScreen: true,
     mouse: true,
   },
+  speckit: {
+    _comment:
+      'createBranch: /speckit.specify creates and checks out the feature branch (git repos only).',
+    createBranch: true,
+  },
 };
 
 export function initialSettingsJson(): string {

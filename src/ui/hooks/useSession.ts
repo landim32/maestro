@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SessionController } from '../../session/controller.js';
 
 /** Subscribes a component to controller/session changes and returns a snapshot. */
@@ -13,6 +13,12 @@ export function useSession(controller: SessionController) {
   }, [controller]);
 
   const s = controller.session;
+  // Stable reference while the command list itself does not change (it only changes on /speckit.init).
+  const commandList = controller.commands;
+  const commands = useMemo(
+    () => commandList.map((c) => ({ name: c.name, usage: c.usage, description: c.description })),
+    [commandList],
+  );
   return {
     history: s.history,
     state: s.state,
@@ -29,5 +35,7 @@ export function useSession(controller: SessionController) {
     transient: controller.transient,
     /** ask_user dialog state while awaiting_answer (contracts/ask-user.md). */
     question: controller.questionFlow,
+    /** Slash commands (built-in + Spec Kit) for the prompt suggestions (specs/006). */
+    commands,
   };
 }

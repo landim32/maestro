@@ -83,6 +83,22 @@ describe('open-source commitment', () => {
     expect(readme).toContain('## Créditos');
   });
 
+  /** specs/006 contracts/init-and-context.md § 2 — bundled Spec Kit assets (MIT) */
+  it('bundled spec-kit assets carry their NOTICE and are credited in the notices and shipped', () => {
+    expect(notices).toContain('## spec-kit');
+    expect(notices).toContain('https://github.com/github/spec-kit');
+    expect(notices).toContain('MIT License (spec-kit)');
+    expect(notices).toMatch(/Copyright GitHub, Inc\./);
+    const notice = read('assets/speckit/NOTICE');
+    expect(notice).toContain('v1.2.3');
+    expect(notice).toContain('8ac9e8103319d98099cfc274a2517bb2b621626c');
+    expect(notice).toContain('templates/commands/specify.md');
+    expect(read('assets/speckit/VERSION')).toMatch(/^v1\.2\.3 8ac9e810/);
+    const pkg = JSON.parse(read('package.json')) as { files?: string[] };
+    expect(pkg.files).toContain('assets');
+    expect(read('README.md')).toContain('spec-kit');
+  });
+
   it('the constitution records the open-source and attribution principles', () => {
     const constitution = read('.specify/memory/constitution.md');
     expect(constitution).toContain('Open-source permanente');

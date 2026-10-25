@@ -88,7 +88,10 @@ describe('tool loop', () => {
     s.pushUser('write');
     const never = () => new Promise<boolean>(() => {});
     const run = runTurn(s, p, opts(), { confirm: never });
-    await new Promise((r) => setTimeout(r, 30));
+    // poll instead of a fixed sleep: the preview runs in a loaded test suite
+    for (let i = 0; i < 100 && s.state !== 'awaiting_confirmation'; i++) {
+      await new Promise((r) => setTimeout(r, 20));
+    }
     expect(s.state).toBe('awaiting_confirmation');
     expect(s.pendingConfirmation?.tool.name).toBe('write_file');
     s.pendingConfirmation!.resolve(true);

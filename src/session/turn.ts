@@ -34,6 +34,11 @@ export interface TurnOptions {
   toolSettings: ToolContext['settings'];
   /** Live approval mode; a getter so Tab during the turn affects the next tool call. */
   approvalMode?: () => ApprovalMode;
+  /**
+   * Runs before the approval policy; a defined result replaces the tool call entirely
+   * (Spec Kit scripts executed natively, specs/006 contracts/native-steps.md § 1).
+   */
+  intercept?: (tool: ToolDefinition, input: unknown) => Promise<ToolResult | undefined>;
   maxToolIterations?: number;
 }
 
@@ -116,6 +121,11 @@ async function executeTool(
     };
   }
   const input = parsed.data;
+
+  if (opts.intercept) {
+    const intercepted = await opts.intercept(tool, input);
+    if (intercepted) return intercepted;
+  }
 
   // Approval policy (contracts/approval-modes.md): read/question never ask; the rest depends on the mode.
   const { kind, reason } = classifyAction(tool, input);

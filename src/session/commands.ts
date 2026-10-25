@@ -1,21 +1,36 @@
 import type { ProviderId } from '../providers/types.js';
 import type { MethodId } from '../setup/methods.js';
+import type { PromptTurn } from '../speckit/prompt.js';
 import { APPROVAL_MODES, approvalModeInfo, parseApprovalMode } from '../tools/approval.js';
 import type { SessionController } from './controller.js';
+
+export type { PromptTurn };
 
 export interface SlashCommand {
   name: string;
   aliases?: string[];
   usage?: string;
   description: string;
-  run: (ctl: SessionController, args: string[]) => Promise<void> | void;
+  /** Where the command comes from (`/help` shows it); undefined for built-ins. */
+  origin?: string;
+  /**
+   * Runs the command. `args` are whitespace-split, `rest` is the raw text after the name.
+   * Returning a `PromptTurn` runs a model turn with that prompt (Spec Kit commands).
+   */
+  run: (
+    ctl: SessionController,
+    args: string[],
+    rest?: string,
+  ) => Promise<void | PromptTurn> | void | PromptTurn;
 }
 
-export function parseSlash(input: string): { name: string; args: string[] } | null {
+export function parseSlash(input: string): { name: string; args: string[]; rest: string } | null {
   const trimmed = input.trim();
   if (!trimmed.startsWith('/')) return null;
-  const [head = '', ...rest] = trimmed.slice(1).split(/\s+/);
-  return { name: head.toLowerCase(), args: rest.filter(Boolean) };
+  const body = trimmed.slice(1);
+  const m = /^(\S*)\s*([\s\S]*)$/.exec(body)!;
+  const rest = m[2] ?? '';
+  return { name: (m[1] ?? '').toLowerCase(), args: rest.split(/\s+/).filter(Boolean), rest };
 }
 
 export const NON_INTERACTIVE_AUTH_HINT =
@@ -26,9 +41,18 @@ const help: SlashCommand = {
   description: 'List available commands and shortcuts.',
   run(ctl) {
     const lines = ['Commands:'];
-    for (const c of ctl.commands) {
+    const builtin = ctl.commands.filter((c) => !c.origin);
+    const speckit = ctl.commands.filter((c) => c.origin);
+    for (const c of builtin) {
       const names = [c.name, ...(c.aliases ?? [])].map((n) => `/${n}`).join(', ');
       lines.push(`  ${(c.usage ?? names).padEnd(26)} ${c.description}`);
+    }
+    if (speckit.length > 0) {
+      lines.push('', `Spec Kit (${ctl.specKit?.summary() ?? 'comandos do projeto'}):`);
+      for (const c of speckit) {
+        const label = c.usage ?? `/${c.name}`;
+        lines.push(`  ${label.padEnd(30)} ${c.description} (${c.origin})`);
+      }
     }
     lines.push(
       '',
@@ -155,15 +179,40 @@ const model: SlashCommand = {
 
 export const DEFAULT_COMMANDS: SlashCommand[] = [help, auth, model, approvalMode, clear, exit];
 
-/** Executes a slash command. Returns false when `input` is not a slash command. */
-export async function executeSlash(input: string, ctl: SessionController): Promise<boolean> {
+export interface SlashOutcome {
+  /** False when `input` is not a slash command. */
+  handled: boolean;
+  /** Set when the command asks for a model turn (Spec Kit prompt commands). */
+  turn?: PromptTurn;
+  /** The command refused to run (missing prerequisites); `-p` exits with the usage code. */
+  blocked?: boolean;
+}
+
+/** Thrown by a command that cannot run yet; the message is shown as a warning. */
+export class CommandBlocked extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CommandBlocked';
+  }
+}
+
+/** Executes a slash command (contracts/speckit-commands.md § 2 for prompt commands). */
+export async function executeSlash(input: string, ctl: SessionController): Promise<SlashOutcome> {
   const parsed = parseSlash(input);
-  if (!parsed) return false;
+  if (!parsed) return { handled: false };
   const cmd = ctl.commands.find((c) => c.name === parsed.name || c.aliases?.includes(parsed.name));
   if (!cmd) {
     ctl.notice(`Unknown command: /${parsed.name}. Type /help.`, 'warn');
-    return true;
+    return { handled: true, blocked: true };
   }
-  await cmd.run(ctl, parsed.args);
-  return true;
+  try {
+    const turn = await cmd.run(ctl, parsed.args, parsed.rest);
+    return turn ? { handled: true, turn } : { handled: true };
+  } catch (err) {
+    if (err instanceof CommandBlocked) {
+      ctl.notice(err.message, 'warn');
+      return { handled: true, blocked: true };
+    }
+    throw err;
+  }
 }

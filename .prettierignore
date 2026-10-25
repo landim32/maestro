@@ -5,3 +5,4 @@ package-lock.json
 .specify/
 specs/
 tests/fixtures/
+assets/

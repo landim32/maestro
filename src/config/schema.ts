@@ -92,6 +92,13 @@ export const uiSettingsSchema = z.strictObject({
   mouse: z.boolean().default(true),
 });
 
+/** Native Spec Kit options (specs/006 contracts/init-and-context.md § 4). */
+export const speckitSettingsSchema = z.strictObject({
+  _comment: comment,
+  /** `/speckit.specify` creates and checks out the feature branch when the project is a git repo. */
+  createBranch: z.boolean().default(true),
+});
+
 export const settingsSchema = z.strictObject({
   _comment: comment,
   activeProvider: providerIdSchema.default(DEFAULTS.activeProvider),
@@ -103,6 +110,7 @@ export const settingsSchema = z.strictObject({
     .prefault({}),
   tools: toolsSettingsSchema.prefault({}),
   ui: uiSettingsSchema.prefault({}),
+  speckit: speckitSettingsSchema.prefault({}),
 });
 
 export type ProviderId = z.infer<typeof providerIdSchema>;
@@ -111,6 +119,7 @@ export type ClaudeProviderSettings = z.infer<typeof claudeProviderSchema>;
 export type QwenProviderSettings = z.infer<typeof qwenProviderSchema>;
 export type ToolsSettings = z.infer<typeof toolsSettingsSchema>;
 export type UiSettings = z.infer<typeof uiSettingsSchema>;
+export type SpecKitSettings = z.infer<typeof speckitSettingsSchema>;
 export type Settings = z.infer<typeof settingsSchema>;
 export type SettingsInput = z.input<typeof settingsSchema>;
 

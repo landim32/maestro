@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseArgs, UsageError } from '../../../src/cli/args.js';
+import { parseArgs, UsageError, versionText } from '../../../src/cli/args.js';
 
 describe('parseArgs', () => {
   it('defaults to interactive run with tools and color on', async () => {
@@ -66,6 +66,8 @@ describe('parseArgs', () => {
     const h = await parseArgs(['--help']);
     expect(h.action).toBe('help');
     expect(h.helpText).toContain('--provider');
+    // specs/006: the bundled Spec Kit version is part of --version
+    expect(versionText()).toMatch(/^maestro \S+\nspec-kit v\d+\.\d+\.\d+ \(embutido\)$/);
   });
 
   it('rejects positional arguments, unknown options and invalid provider', async () => {

@@ -68,7 +68,8 @@ export async function runNonInteractive(opts: NonInteractiveOptions): Promise<nu
     flush();
     if (wroteSomething && lastChar !== '\n') stdout.write('\n');
 
-    if (!result) return EXIT.OK; // slash command or ignored input
+    // slash command or ignored input; a blocked command (e.g. Spec Kit prerequisites) is a usage error
+    if (!result) return controller.lastCommandBlocked ? EXIT.USAGE : EXIT.OK;
     if (result.stopReason === 'cancelled' || interrupted) return EXIT.INTERRUPTED;
     if (result.stopReason === 'error') return EXIT.PROVIDER_ERROR;
     return EXIT.OK;
