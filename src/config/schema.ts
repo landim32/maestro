@@ -94,6 +94,8 @@ export const toolsSettingsSchema = z.strictObject({
   enabled: z.boolean().default(DEFAULTS.tools.enabled),
   commandTimeoutMs: z.number().int().min(1000).default(DEFAULTS.tools.commandTimeoutMs),
   maxOutputChars: z.number().int().min(1000).default(DEFAULTS.tools.maxOutputChars),
+  /** Model rounds with tool calls per turn; the Claude Code provider allows 5 calls per round. */
+  maxToolIterations: z.number().int().min(1).max(1000).default(DEFAULTS.tools.maxToolIterations),
   approvalMode: approvalModeSchema.default(DEFAULTS.tools.approvalMode),
 });
 

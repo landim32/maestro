@@ -19,8 +19,10 @@ import type {
 import type { FileDiff } from '../tools/diff.js';
 import { MaestroError } from '../utils/errors.js';
 import type { Session } from './session.js';
+import { DEFAULTS } from '../config/defaults.js';
 
-export const MAX_TOOL_ITERATIONS = 10;
+/** Fallback when the caller passes no `maxToolIterations` (the controller passes `tools.maxToolIterations`). */
+export const MAX_TOOL_ITERATIONS = DEFAULTS.tools.maxToolIterations;
 
 export interface TurnCallbacks {
   onDelta?: (text: string) => void;

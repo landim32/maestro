@@ -100,6 +100,7 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
     "enabled": true,
     "commandTimeoutMs": 60000,
     "maxOutputChars": 20000,
+    "maxToolIterations": 50,
     "approvalMode": "default"
   },
   "ui": {
@@ -112,6 +113,8 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
   }
 }
 ```
+
+Em `tools`: `maxToolIterations` (padrão 50) é quantas rodadas de ferramentas o modelo pode fazer num mesmo turno antes de o Maestro parar com o aviso `stopped after N tool iterations in one turn`. No provedor `claude-code`, cada rodada vale 5 chamadas, então o padrão permite 250. Comandos agênticos como `/speckit.implement` precisam de dezenas de ações; se o limite for atingido, envie "continue" para seguir do ponto em que parou.
 
 Em `ui`: `pasteCollapseLines` é o número de linhas a partir do qual uma colagem vira marcador; `attachMaxBytes` limita cada arquivo colado, `attachMaxTotalBytes` o total anexado por mensagem e `imageMaxBytes` cada imagem.
 

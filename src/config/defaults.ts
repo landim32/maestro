@@ -49,6 +49,9 @@ export const DEFAULTS = {
     enabled: true,
     commandTimeoutMs: 60_000,
     maxOutputChars: 20_000,
+    /** Model rounds with tool calls per turn (Claude Code: × 5 calls). Agentic commands such as
+     *  /speckit.implement need dozens of actions. */
+    maxToolIterations: 50,
     approvalMode: 'default' as ApprovalMode,
   },
   ui: {
@@ -101,10 +104,11 @@ export const INITIAL_SETTINGS = {
   },
   tools: {
     _comment:
-      "approvalMode: 'default' (ask before every edit and command), 'auto-edit' (edits run, commands ask), 'auto' (only destructive commands ask), 'yolo' (never ask). Tab cycles it for the session.",
+      "approvalMode: 'default' (ask before every edit and command), 'auto-edit' (edits run, commands ask), 'auto' (only destructive commands ask), 'yolo' (never ask). Tab cycles it for the session. maxToolIterations: model rounds with tool calls per turn (claude-code: 5 calls each).",
     enabled: DEFAULTS.tools.enabled,
     commandTimeoutMs: DEFAULTS.tools.commandTimeoutMs,
     maxOutputChars: DEFAULTS.tools.maxOutputChars,
+    maxToolIterations: DEFAULTS.tools.maxToolIterations,
     approvalMode: DEFAULTS.tools.approvalMode,
   },
   ui: {
