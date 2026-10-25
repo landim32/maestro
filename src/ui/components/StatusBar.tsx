@@ -28,6 +28,8 @@ export interface StatusBarProps {
   approvalMode?: ApprovalMode;
   /** `/mouse off` for this session (specs/007 contracts/mouse-selection.md § 5). */
   mouseOff?: boolean;
+  /** Route of the turn being generated when it is not `chat` (specs/008). */
+  route?: string;
 }
 
 export const MOUSE_OFF_TEXT = 'mouse desligado';
@@ -66,6 +68,7 @@ export function StatusBar({
   scrollable,
   approvalMode,
   mouseOff,
+  route,
 }: StatusBarProps) {
   const compact = capabilities.compact;
   let hints: string;
@@ -77,7 +80,7 @@ export function StatusBar({
   if (scrollable) hints = compact ? `PgUp/PgDn · ${hints}` : `PgUp/PgDn scroll · ${hints}`;
   if (capabilities.tooSmall) hints = '';
 
-  const tail = `${mouseOff ? `  ·  ${MOUSE_OFF_TEXT}` : ''}${exitArmed ? '  ·  press Ctrl+C again to exit' : ''}${transientNotice ? `  ·  ${transientNotice}` : ''}`;
+  const tail = `${route && state !== 'idle' ? `  ·  rota: ${route}` : ''}${mouseOff ? `  ·  ${MOUSE_OFF_TEXT}` : ''}${exitArmed ? '  ·  press Ctrl+C again to exit' : ''}${transientNotice ? `  ·  ${transientNotice}` : ''}`;
 
   if (capabilities.tooSmall) {
     return (

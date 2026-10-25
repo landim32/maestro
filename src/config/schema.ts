@@ -107,6 +107,71 @@ export const speckitSettingsSchema = z.strictObject({
   createBranch: z.boolean().default(true),
 });
 
+/** Route names: lowercase, digits, `.`, `-`, `_` (specs/008 contracts/routes-config.md § 1). */
+export const ROUTE_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
+export const routeNameSchema = z
+  .string()
+  .regex(ROUTE_NAME_RE, 'nome de rota inválido (minúsculas, dígitos, ".", "-", "_")');
+
+/** Target of a route: provider + model, with optional per-route adjustments. */
+export const routeTargetSchema = z.strictObject({
+  _comment: comment,
+  provider: providerIdSchema,
+  model: z.string().regex(/^\S+$/, 'must be a single non-empty token'),
+  effort: effortSchema.optional(),
+  maxTokens: maxTokensSchema.optional(),
+});
+
+/**
+ * `routes.<name>` → target. A missing key means "default": `chat` follows the active
+ * provider/model and every other route follows `chat` (specs/008 data-model.md § 1).
+ */
+export const routesSettingsSchema = z
+  .record(z.string(), z.unknown())
+  .superRefine((routes, ctx) => {
+    for (const [name, value] of Object.entries(routes)) {
+      if (name === '_comment') {
+        if (typeof value !== 'string')
+          ctx.addIssue({ code: 'custom', path: [name], message: 'must be a string' });
+        continue;
+      }
+      if (!ROUTE_NAME_RE.test(name)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [name],
+          message: 'nome de rota inválido (minúsculas, dígitos, ".", "-", "_")',
+        });
+        continue;
+      }
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        ctx.addIssue({
+          code: 'custom',
+          path: [name],
+          message: 'must be an object { provider, model }',
+        });
+        continue;
+      }
+      const parsed = routeTargetSchema.safeParse(value);
+      if (!parsed.success) {
+        for (const issue of parsed.error.issues) {
+          ctx.addIssue({ ...issue, path: [name, ...issue.path] } as never);
+        }
+      }
+    }
+  })
+  .transform((routes) => {
+    const out: Record<string, string | z.infer<typeof routeTargetSchema>> = {};
+    for (const [name, value] of Object.entries(routes)) {
+      if (name === '_comment') {
+        if (typeof value === 'string') out[name] = value;
+        continue;
+      }
+      const parsed = routeTargetSchema.safeParse(value); // issues were reported by the refinement
+      if (parsed.success) out[name] = parsed.data;
+    }
+    return out;
+  });
+
 export const settingsSchema = z.strictObject({
   _comment: comment,
   activeProvider: providerIdSchema.default(DEFAULTS.activeProvider),
@@ -119,6 +184,7 @@ export const settingsSchema = z.strictObject({
   tools: toolsSettingsSchema.prefault({}),
   ui: uiSettingsSchema.prefault({}),
   speckit: speckitSettingsSchema.prefault({}),
+  routes: routesSettingsSchema.prefault({}),
 });
 
 export type ProviderId = z.infer<typeof providerIdSchema>;
@@ -128,6 +194,20 @@ export type QwenProviderSettings = z.infer<typeof qwenProviderSchema>;
 export type ToolsSettings = z.infer<typeof toolsSettingsSchema>;
 export type UiSettings = z.infer<typeof uiSettingsSchema>;
 export type SpecKitSettings = z.infer<typeof speckitSettingsSchema>;
+export type RouteTarget = z.infer<typeof routeTargetSchema>;
+/** Validated routes without the `_comment` entry. */
+export type RoutesSettings = Record<string, RouteTarget>;
+
+/** `settings.routes` without `_comment` (the only non-object entry the schema allows). */
+export function routesOf(settings: {
+  routes: Record<string, string | RouteTarget>;
+}): RoutesSettings {
+  const out: RoutesSettings = {};
+  for (const [name, value] of Object.entries(settings.routes)) {
+    if (typeof value !== 'string') out[name] = value;
+  }
+  return out;
+}
 export type Settings = z.infer<typeof settingsSchema>;
 export type SettingsInput = z.input<typeof settingsSchema>;
 

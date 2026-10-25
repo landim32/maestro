@@ -218,7 +218,8 @@ export function createQwenProvider(ctx: ProviderContext): ModelProvider {
         const stream = await client.chat.completions.create(
           {
             model: req.model ?? cfg.model,
-            max_tokens: cfg.maxTokens,
+            // Route adjustments (specs/008): only maxTokens applies here (effort is Anthropic-only).
+            max_tokens: req.overrides?.maxTokens ?? cfg.maxTokens,
             messages: toOpenAIMessages(req.system, req.messages),
             ...(req.tools.length ? { tools: toOpenAITools(req.tools) } : {}),
             stream: true,

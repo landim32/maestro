@@ -64,6 +64,23 @@ export function mountApp(opts: HarnessOptions = {}) {
   return { ...ui, controller, session, provider, exits: () => exited };
 }
 
+/**
+ * One FakeProvider per id with identifiable answers (`from claude` / `from qwen`), for route
+ * tests (specs/008): pass as `providers` and inspect `.claude.requests` / `.qwen.requests`.
+ */
+export function twoProviders(opts: { delayMs?: number } = {}) {
+  const make = (id: ProviderId) =>
+    createFakeProvider(
+      () => [
+        { type: 'text_delta', text: `from ${id}` },
+        { type: 'usage', inputTokens: 1, outputTokens: 1 },
+        { type: 'done', stopReason: 'end_turn' },
+      ],
+      { id, delayMs: opts.delayMs },
+    );
+  return { claude: make('claude'), qwen: make('qwen') };
+}
+
 /** Provider that answers with `n` numbered lines `L0001 … L000n`, optionally streamed slowly. */
 export function linesProvider(n: number, opts: { delayMs?: number; perDelta?: number } = {}) {
   const lines = Array.from({ length: n }, (_, i) => `L${String(i + 1).padStart(4, '0')} content`);

@@ -4,7 +4,7 @@ import type { MaestroError } from '../utils/errors.js';
 import type { ToolDefinition } from '../tools/types.js';
 
 export type { ProviderId } from '../config/schema.js';
-import type { ProviderId } from '../config/schema.js';
+import type { Effort, ProviderId } from '../config/schema.js';
 
 export type Role = 'user' | 'assistant' | 'tool';
 
@@ -24,6 +24,8 @@ export interface Message {
   model?: string;
   /** Transcript label when `content` is a composed prompt (e.g. `/speckit.plan`); never sent to the model. */
   display?: string;
+  /** Route that produced an assistant message (specs/008); absent = chat. */
+  route?: string;
 }
 
 export interface ProviderRequest {
@@ -32,6 +34,8 @@ export interface ProviderRequest {
   tools: ToolDefinition[];
   model?: string;
   signal: AbortSignal;
+  /** Per-turn adjustments from the route (specs/008); providers apply what they support. */
+  overrides?: { effort?: Effort; maxTokens?: number };
 }
 
 export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'cancelled';

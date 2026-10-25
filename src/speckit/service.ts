@@ -153,6 +153,7 @@ export class SpecKitService {
       description: file.description || `Spec Kit: ${file.name}`,
       usage: file.name === 'speckit.specify' ? '/speckit.specify <descrição>' : undefined,
       origin: file.origin,
+      kind: 'prompt' as const, // calls the model → has a route (specs/008)
       run: async (ctl, _args, rest) => {
         if (!ctl.tools.some((t) => t.name === 'run_command')) {
           throw new CommandBlocked(

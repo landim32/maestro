@@ -185,7 +185,13 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
         color={caps.color}
       />
       {dialog ? (
-        <DialogHost dialog={dialog} color={caps.color} onInput={onDialogInput} rows={caps.rows} />
+        <DialogHost
+          dialog={dialog}
+          color={caps.color}
+          onInput={onDialogInput}
+          rows={caps.rows}
+          routesContext={() => controller.setup.routesContext()}
+        />
       ) : (
         <Transcript
           capabilities={caps}
@@ -258,6 +264,7 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
         scrollable={scrollable && !dialog}
         approvalMode={snap.approvalMode}
         mouseOff={!snap.mouseEnabled}
+        route={snap.currentRoute}
       />
     </Box>
   );

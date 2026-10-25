@@ -142,6 +142,7 @@ describe('slash commands', () => {
         display: '/speckit.demo faça algo  bem feito',
         prompt: 'PROMPT faça algo  bem feito',
       },
+      command: { name: 'speckit.demo', kind: undefined },
     });
     expect(fake.requests).toHaveLength(0);
 
@@ -233,6 +234,86 @@ describe('SessionController.submit', () => {
     });
     expect(fake.requests).toHaveLength(0);
     expect(ctl.notices.some((n) => /Modo desconhecido/.test(n.text))).toBe(true);
+  });
+
+  it('/ask sends through a known route; without route/request it warns with the list (specs/008 § 6)', async () => {
+    const { ctl, fake } = make();
+    const r = await executeSlash('/ask github resuma o PR #6', ctl);
+    expect(r.turn).toEqual({
+      display: '/ask github resuma o PR #6',
+      prompt: 'resuma o PR #6',
+      route: 'github',
+    });
+    expect(r.command).toEqual({ name: 'ask', kind: 'route' });
+    expect(ctl.routeEntries().some((e) => e.name === 'ask')).toBe(false); // /ask has no route of its own
+    for (const bad of ['/ask', '/ask nada x', '/ask github']) {
+      const before = ctl.notices.length;
+      const o = await executeSlash(bad, ctl);
+      expect(o.turn).toBeUndefined();
+      expect(ctl.notices[before]?.text).toMatch(
+        /^Uso: \/ask <rota> <pedido>\. Rotas: chat, github, infra/,
+      );
+    }
+    expect(fake.requests).toHaveLength(0);
+  });
+
+  it('purpose routes get /<route> shortcuts unless a command has that name; /help lists them', async () => {
+    const session = new Session({ cwd: '/w', activeProviderId: 'claude' });
+    const fake = textProvider(['ok']);
+    const ctl = new SessionController({
+      session,
+      ctx: makeCtx({
+        routes: {
+          review: { provider: 'claude', model: 'claude-sonnet-5-5' },
+          help: { provider: 'claude', model: 'claude-sonnet-5-5' },
+        },
+      }),
+      tools: [],
+      system: 'sys',
+      providerOverride: () => fake,
+    });
+    const names = ctl.commands.map((c) => c.name);
+    expect(names).toContain('github');
+    expect(names).toContain('infra');
+    expect(names).toContain('review');
+    expect(names.filter((n) => n === 'help')).toHaveLength(1); // the command wins
+    const r = await executeSlash('/review este trecho', ctl);
+    expect(r.turn).toEqual({
+      display: '/review este trecho',
+      prompt: 'este trecho',
+      route: 'review',
+    });
+    expect((await executeSlash('/infra', ctl)).turn).toBeUndefined();
+    expect(ctl.notices.at(-1)?.text).toMatch(/Uso: \/infra <pedido>/);
+    await executeSlash('/help', ctl);
+    const help = ctl.notices.at(-1)?.text ?? '';
+    expect(help).toContain('/routes');
+    expect(help).toContain('/ask <rota> <pedido>');
+    expect(help).toContain('/review <pedido>');
+    expect(help).toContain('(atalho da rota review)');
+    expect(ctl.routeEntries().find((e) => e.name === 'help')).toMatchObject({
+      missingCommand: true,
+    });
+  });
+
+  it('/routes prints the table in -p and opens the dialog interactively', async () => {
+    const { ctl } = make();
+    await ctl.submit('/routes');
+    expect(ctl.dialog?.type).toBe('routes');
+    ctl.closeDialog();
+    const p = new SessionController({
+      session: new Session({ cwd: '/w', activeProviderId: 'claude' }),
+      ctx: makeCtx(),
+      tools: [],
+      system: 'sys',
+      interactive: false,
+      providerOverride: () => textProvider(['ok']),
+    });
+    await p.submit('/routes');
+    expect(p.dialog).toBeUndefined();
+    expect(p.notices.at(-1)?.text).toMatch(
+      /Rotas por modelo:\n\s+chat\s+claude \/ claude-opus-5-5\s+padrão \(segue o ativo\)/,
+    );
   });
 
   it('/mouse toggles and sets the session mouse state; -p only reports (contracts/mouse-selection.md § 5)', async () => {

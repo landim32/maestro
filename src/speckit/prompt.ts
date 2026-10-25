@@ -7,6 +7,8 @@ export interface PromptTurn {
   display: string;
   /** Sent to the model. */
   prompt: string;
+  /** Forced route for this turn (`/ask <route>`, purpose shortcuts; specs/008). */
+  route?: string;
 }
 
 /** Substitutes `$ARGUMENTS` / `{ARGS}` in the command body. */

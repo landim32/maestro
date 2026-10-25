@@ -48,6 +48,23 @@ describe('applyPatch', () => {
       activeProvider: 'qwen',
     });
   });
+  it('explicit segments keep a dotted key whole (route names, specs/008)', () => {
+    const out = applyPatch({ routes: { _comment: 'c' } }, [
+      {
+        path: 'routes.speckit.plan',
+        segments: ['routes', 'speckit.plan'],
+        value: { provider: 'qwen', model: 'q' },
+      },
+    ]);
+    expect(out).toEqual({
+      routes: { _comment: 'c', 'speckit.plan': { provider: 'qwen', model: 'q' } },
+    });
+    const removed = applyPatch(out, [
+      { path: 'routes.speckit.plan', segments: ['routes', 'speckit.plan'], value: undefined },
+    ]);
+    expect(removed).toEqual({ routes: { _comment: 'c' } });
+  });
+
   it('removes keys set to empty strings and does not mutate the input', () => {
     const raw = { providers: { qwen: { apiKey: 'old' } } };
     const out = applyPatch(raw, [{ path: 'providers.qwen.apiKey', value: '' }]);

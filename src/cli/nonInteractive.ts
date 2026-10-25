@@ -10,6 +10,8 @@ export interface NonInteractiveOptions {
   stderr?: { write(s: string): unknown };
   /** Test seam: register the SIGINT handler (default true). */
   handleSignals?: boolean;
+  /** `--route`: forced route for this request (specs/008 contracts/route-resolution.md § 5). */
+  route?: string;
 }
 
 async function readAll(stream: NodeJS.ReadableStream): Promise<string> {
@@ -58,6 +60,7 @@ export async function runNonInteractive(opts: NonInteractiveOptions): Promise<nu
   let lastChar = '\n';
   try {
     const result = await controller.submit(prompt, {
+      route: opts.route,
       onDelta: (t) => {
         if (t === '') return;
         stdout.write(t);

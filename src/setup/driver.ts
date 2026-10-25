@@ -12,6 +12,13 @@ import { installHints } from './installHints.js';
 import type { MethodId } from './methods.js';
 import { initialModelFlow, modelEffectsFor, modelFlowReducer } from './modelFlow.js';
 import type { ModelFlowContext, ModelFlowEvent, ModelFlowState } from './modelFlow.js';
+import {
+  describeRouteResult,
+  initialRoutesFlow,
+  routesEffectsFor,
+  routesFlowReducer,
+} from './routesFlow.js';
+import type { RoutesFlowContext, RoutesFlowEvent, RoutesFlowState } from './routesFlow.js';
 
 export interface SetupDeps {
   testConnection: ConnectionTester;
@@ -69,6 +76,28 @@ export class SetupDriver {
     return ok;
   }
 
+  private routesCtx(): RoutesFlowContext {
+    return {
+      entries: this.ctl.routeEntries(),
+      statuses: this.ctl.statuses(),
+      settings: this.ctl.settings,
+      commandNames: this.ctl.commands.flatMap((c) => [c.name, ...(c.aliases ?? [])]),
+    };
+  }
+
+  /** `/routes` (specs/008 contracts/routes-dialog.md § 1). */
+  openRoutes(): boolean {
+    const flow = initialRoutesFlow(this.routesCtx());
+    const ok = this.ctl.openDialog({ type: 'routes', flow });
+    if (ok) this.ctl.logger.log('setup.open', { dialog: 'routes' });
+    return ok;
+  }
+
+  /** Context of the open routes dialog (the UI needs the entries to render the list). */
+  routesContext(): RoutesFlowContext {
+    return this.routesCtx();
+  }
+
   /** Cancels any in-flight effect (used on exit). */
   abort(): void {
     this.testAbort?.abort();
@@ -81,7 +110,55 @@ export class SetupDriver {
     const dialog = this.ctl.dialog;
     if (!dialog) return;
     if (dialog.type === 'auth') this.dispatchAuth(key);
-    else this.dispatchModel(key);
+    else if (dialog.type === 'model') this.dispatchModel(key);
+    else this.dispatchRoutes(key);
+  }
+
+  dispatchRoutes(event: RoutesFlowEvent): void {
+    const dialog = this.ctl.dialog;
+    if (!dialog || dialog.type !== 'routes') return;
+    const prev = dialog.flow;
+    const next = routesFlowReducer(prev, event, this.routesCtx());
+    if (next === prev) return;
+    this.ctl.setDialog({ type: 'routes', flow: next });
+    if (next.step !== prev.step) this.runRoutesEffect(next);
+  }
+
+  // ------------------------------------------------------------------ routes effects
+
+  private runRoutesEffect(state: RoutesFlowState): void {
+    const effect = routesEffectsFor(state);
+    if (effect.kind === 'close') {
+      this.ctl.closeDialog();
+      return;
+    }
+    if (effect.kind !== 'apply' || state.step !== 'applying') return;
+    const entry = this.ctl.routeEntries().find((e) => e.name === state.route);
+    try {
+      // Route names may contain dots (speckit.plan): explicit segments keep the key whole.
+      const patch: SettingsPatchEntry[] = [
+        {
+          path: `routes.${state.route}`,
+          segments: ['routes', state.route],
+          value: state.action === 'set' ? state.target : undefined,
+        },
+      ];
+      if (state.action === 'set' && state.target && state.learn) {
+        patch.push(...this.ctl.rememberModel(state.target.provider, state.target.model));
+      }
+      const result = this.ctl.writeSettings(patch);
+      this.ctl.logger.log('routes.write', { route: state.route, action: state.action });
+      this.ctl.reloadSettings();
+      this.ctl.refreshCommands();
+      const overridden = result.overriddenByProject.includes(`routes.${state.route}`);
+      this.dispatchRoutes({
+        type: 'applied',
+        message: describeRouteResult(state, entry, overridden),
+      });
+    } catch (err) {
+      const msg = err instanceof MaestroError ? err.message : String(err);
+      this.dispatchRoutes({ type: 'applyError', error: msg });
+    }
   }
 
   dispatchAuth(event: AuthFlowEvent): void {

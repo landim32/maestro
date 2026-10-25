@@ -220,6 +220,50 @@ describe('no secrets leak — pasted content (specs/007 contracts/paste-chips.md
   );
 });
 
+describe('no secrets leak — /routes dialog and route logs (specs/008)', () => {
+  it('the routes dialog shows masked credentials only; route.resolve logs names, never keys', async () => {
+    const { mountApp, KEYS } = await import('../../helpers/appHarness.js');
+    const { waitForFrame, cleanupSized, tick } = await import('../../helpers/renderSized.js');
+    const logPath = path.join(tmp, 'debug.log');
+    const logger = createLogger({ enabled: true, filePath: logPath, secrets: [] });
+    const ui = mountApp({
+      columns: 100,
+      rows: 30,
+      settings: {
+        providers: { claude: { apiKey: CLAUDE_KEY }, qwen: { enabled: true, apiKey: QWEN_KEY } },
+        routes: { github: { provider: 'qwen', model: 'qwen3-max' } },
+      },
+      credentials: { credentials: { claude: 'config', qwen: 'config' } },
+      controller: { logger, debug: true },
+    });
+    try {
+      await waitForFrame(ui, 'Type a message');
+      ui.stdin.write('/ask github oi');
+      await tick();
+      ui.stdin.write(KEYS.enter);
+      await waitForFrame(ui, '⇢ github');
+      ui.stdin.write('/routes');
+      await tick();
+      ui.stdin.write(KEYS.enter);
+      await waitForFrame(ui, 'Rotas por modelo');
+      ui.stdin.write(KEYS.enter); // chat → actions
+      await tick();
+      ui.stdin.write(KEYS.enter); // set → provider list (credentials column)
+      await waitForFrame(ui, 'chave ****');
+      const frames = ui.stdout.frames.join('\n');
+      expect(frames).not.toContain(CLAUDE_KEY);
+      expect(frames).not.toContain(QWEN_KEY);
+      const log = fs.readFileSync(logPath, 'utf8');
+      expect(log).toMatch(/route\.resolve/);
+      expect(log).toContain('"route":"github"');
+      expect(log).not.toContain(CLAUDE_KEY);
+      expect(log).not.toContain(QWEN_KEY);
+    } finally {
+      cleanupSized();
+    }
+  });
+});
+
 describe('no secrets leak', () => {
   it('/model output masks both keys', async () => {
     const ctx = makeCtx(

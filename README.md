@@ -113,6 +113,8 @@ maestro --yolo                       # = --approval-mode yolo
 maestro --no-altscreen               # desenha no buffer principal (sem tela alternativa)
 maestro --debug                      # erros detalhados + ~/.maestro/debug.log
 maestro -p "/speckit.tasks"          # comandos do Spec Kit também funcionam em -p
+maestro -p --route infra "…"         # força uma rota (provedor/modelo) neste pedido
+maestro -p "/routes"                 # tabela das rotas configuradas
 maestro --version                    # versão do Maestro e do Spec Kit embutido
 ```
 
@@ -135,6 +137,9 @@ Na sessão:
 | Ctrl+O                                   | Mostra as primeiras linhas do marcador sob o cursor; Ctrl+O de novo fecha                                                                   |
 | Arrastar com o mouse                     | Seleciona texto da conversa e copia ao soltar (duplo clique = palavra, triplo = linha)                                                      |
 | `/mouse [on\|off]`                       | Liga/desliga o mouse na sessão (rolagem e seleção); desligado, a seleção nativa do terminal volta a funcionar                               |
+| `/routes`                                | Abre a tela de rotas por modelo: qual provedor/modelo atende a conversa, cada comando e as rotas `github`/`infra` (veja abaixo)             |
+| `/ask <rota> <pedido>`                   | Envia um pedido por uma rota específica sem trocar o modelo ativo (`/ask github …`, `/ask speckit.plan …`)                                  |
+| `/github …`, `/infra …`, `/<rota> …`     | Atalhos das rotas de propósito (as fixas e as que você criar em `/routes`)                                                                  |
 | `/clear`                                 | Nova conversa                                                                                                                               |
 | `/help`                                  | Lista comandos                                                                                                                              |
 | `/exit`                                  | Sai                                                                                                                                         |
@@ -184,6 +189,26 @@ Como no qwen-code, colar e copiar funcionam dentro da interface:
 - **Arquivos.** Arraste um arquivo para o terminal ou cole o caminho (absoluto, relativo, com aspas, `~/…` ou `file://…`): ele vira `[Arquivo: nome, N linhas]` e o conteúdo, lido no momento do envio, vai ao modelo em um bloco `<file path="…">`. Vários caminhos de uma vez viram vários marcadores. Arquivos binários, maiores que `ui.attachMaxBytes` (512 KB) ou fora da pasta de trabalho são recusados com um aviso e o caminho fica como texto; o total anexado por mensagem é limitado por `ui.attachMaxTotalBytes` (2 MB).
 - **Imagens.** PNG, JPEG, GIF e WebP (até `ui.imageMaxBytes`, 5 MB) viram `[Imagem: nome, 120 KB]` quando o provedor ativo aceita imagens (Claude); o Qwen recebe um aviso e o caminho fica como texto.
 - **Copiar com o mouse.** Com o mouse ligado, arraste sobre a conversa: o trecho fica destacado e, ao soltar, é copiado para a área de transferência exatamente como está na tela (duplo clique seleciona a palavra, triplo a linha; a seleção acompanha o conteúdo se você rolar com a roda durante o arrasto). A barra mostra `copiado (N linhas)`. A cópia usa `clip.exe` / PowerShell (Windows), `pbcopy` (macOS), `wl-copy`, `xclip` ou `xsel` (Linux) e, sem nenhum deles, a sequência OSC 52 do terminal (funciona por SSH em terminais modernos). Shift+arrasto continua sendo a seleção nativa do terminal; `/mouse off` desliga o mouse na sessão (a barra mostra `mouse desligado`) e `ui.mouse: false` o deixa desligado desde o início. Testado no Windows Terminal; iTerm2, GNOME Terminal, WezTerm e kitty reportam o mouse no mesmo protocolo (SGR).
+
+### Rotas por modelo
+
+Uma **rota** é um nome que aponta para um provedor e um modelo (e, se quiser, `effort` e `maxTokens`). Cada pedido é resolvido para uma rota antes de ir ao modelo, e **todas as rotas trabalham sobre a mesma conversa**: o que o Claude respondeu está no contexto quando o Qwen responde, e vice-versa. O provedor ativo (`/model`) nunca muda por causa de uma rota.
+
+- **`chat`** é a rota da conversa comum. Por padrão segue o provedor/modelo ativo, então `/model` continua sendo o jeito rápido de trocar o modelo.
+- **Cada comando que chama o modelo** (`/speckit.specify`, `/speckit.plan`, `/speckit.implement`, comandos de `.maestro/commands/`…) tem a sua rota, que por padrão segue `chat`. Assim dá para planejar num modelo forte e implementar num barato. Comandos sem modelo (`/help`, `/clear`, `/speckit.init`…) não têm rota.
+- **`github`** e **`infra`** são rotas de propósito, acionadas por `/ask github …`, `/github …` ou `/infra …`; elas acrescentam uma orientação curta ao modelo (fluxo de branch/PR/issues; deploy/CI/containers). Você pode criar as suas (`review`, `docs`…) em `/routes`; cada uma ganha o atalho `/<rota> …`, exceto quando o nome colide com um comando.
+- **Ordem de resolução**: rota forçada (`/ask`, atalho, `--route`) → rota do comando → `chat` → provedor ativo. Se o provedor de uma rota não estiver configurado ou estiver desabilitado, o Maestro avisa e usa a próxima da cadeia; `/routes` marca a rota como `indisponível`.
+- **`/routes`** lista todas as rotas com provedor/modelo, origem (`padrão`, `global`, `projeto`) e disponibilidade; Enter numa rota permite escolher provedor e modelo (ou digitar outro), voltar ao padrão, ou remover uma rota sua; "Nova rota…" cria uma. A tela grava no `settings.json` global; `./.maestro/settings.json` sobrescreve rota a rota.
+- Na transcrição, respostas de rotas diferentes da `chat` vêm marcadas com `⇢ rota · provedor / modelo`; a barra de status mostra `rota: …` enquanto a resposta é gerada.
+
+```json
+"routes": {
+  "speckit.plan": { "provider": "claude", "model": "claude-opus-5-5", "effort": "high" },
+  "speckit.implement": { "provider": "qwen", "model": "qwen3-coder-plus" },
+  "github": { "provider": "claude", "model": "claude-sonnet-5-5" },
+  "review": { "provider": "claude", "model": "claude-sonnet-5-5" }
+}
+```
 
 Códigos de saída: `0` sucesso · `1` erro do provedor (modo `-p`) · `2` uso/configuração inválida · `3` nenhum provedor utilizável · `130` interrompido.
 

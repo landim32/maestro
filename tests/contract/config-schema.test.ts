@@ -47,6 +47,48 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     });
   });
 
+  it('routes: names, targets and optional adjustments (specs/008 contracts/routes-config.md § 1)', () => {
+    const ok = settingsSchema.parse({
+      routes: {
+        _comment: 'x',
+        chat: { provider: 'claude', model: 'claude-opus-5-5' },
+        github: { provider: 'claude', model: 'claude-sonnet-5-5', effort: 'low' },
+        'speckit.plan': { provider: 'claude', model: 'claude-opus-5-5', effort: 'high' },
+        'speckit.implement': { provider: 'qwen', model: 'qwen3-coder-plus', maxTokens: 32000 },
+        review_2: { provider: 'qwen', model: 'qwen3-max' },
+      },
+    });
+    expect(ok.routes['speckit.implement']).toEqual({
+      provider: 'qwen',
+      model: 'qwen3-coder-plus',
+      maxTokens: 32000,
+    });
+    expect(ok.routes['_comment']).toBe('x');
+    expect(settingsSchema.parse({}).routes).toEqual({});
+    expect(issuesOf({ routes: { Rota: { provider: 'claude', model: 'x' } } })[0]).toMatch(
+      /^routes\.Rota: nome de rota inválido/,
+    );
+    expect(issuesOf({ routes: { 'a b': { provider: 'claude', model: 'x' } } })[0]).toMatch(
+      /^routes\.a b: /,
+    );
+    expect(issuesOf({ routes: { '/x': { provider: 'claude', model: 'x' } } })[0]).toMatch(
+      /^routes\.\/x: /,
+    );
+    expect(issuesOf({ routes: { chat: { provider: 'gemini', model: 'x' } } })[0]).toMatch(
+      /^routes\.chat\.provider: /,
+    );
+    expect(issuesOf({ routes: { chat: { provider: 'claude', model: 'a b' } } })[0]).toMatch(
+      /^routes\.chat\.model: /,
+    );
+    expect(issuesOf({ routes: { chat: { provider: 'claude', model: 'x', foo: 1 } } })).toContain(
+      'routes.chat.foo: unknown key',
+    );
+    expect(
+      issuesOf({ routes: { chat: { provider: 'claude', model: 'x', maxTokens: 0 } } })[0],
+    ).toMatch(/^routes\.chat\.maxTokens: /);
+    expect(issuesOf({ routes: { chat: 'active' } })[0]).toMatch(/^routes\.chat: must be an object/);
+  });
+
   it('ui paste/attachment limits: integers with minimums (specs/007 contracts/attachments.md § 4)', () => {
     expect(
       settingsSchema.parse({ ui: { pasteCollapseLines: 1, attachMaxBytes: 1024 } }).ui,
