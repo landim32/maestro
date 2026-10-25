@@ -42,29 +42,31 @@ async function send(ui: ReturnType<typeof mount>, text: string) {
 
 /** contracts/approval-modes.md § 2–4, § 7 */
 describe('approval modes (US1)', () => {
-  it('Tab cycles the four modes in the status bar and back; Shift+Tab goes back; text survives', async () => {
+  it('Shift+Tab cycles the four modes in the status bar and back; plain Tab does not; text survives', async () => {
     const ui = mount([answer('ok')]);
     await waitForFrame(ui, 'Pedir permissão');
     expect(statusLine(ui)).toContain('ready');
+    expect(statusLine(ui)).toContain('(Shift+Tab para trocar)');
 
     ui.stdin.write('abc');
     await tick();
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'Aceitar edições');
     expect(ui.controller.approvalMode).toBe('auto-edit');
     expect(ui.lastFrame()).toContain('modo: Aceitar edições');
     expect(ui.lastFrame()).toContain('› abc');
 
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'Automático');
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'YOLO');
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitFor(() => ui.controller.approvalMode === 'default', 3000, 'back to default');
     expect(ui.lastFrame()).toContain('Pedir permissão');
 
-    ui.stdin.write(KEYS.shiftTab);
-    await waitFor(() => ui.controller.approvalMode === 'yolo', 3000, 'shift+tab');
+    ui.stdin.write(KEYS.tab); // plain Tab: no suggestion open → nothing happens
+    await tick();
+    expect(ui.controller.approvalMode).toBe('default');
     // the prompt text was never touched by Tab
     expect(ui.lastFrame()).toContain('› abc');
     expect(ui.lastFrame()).not.toContain('\t');
@@ -76,7 +78,7 @@ describe('approval modes (US1)', () => {
       answer('arquivo criado'),
     ]);
     await waitForFrame(ui, 'Pedir permissão');
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'Aceitar edições');
     await send(ui, 'crie hello.txt');
     await waitForFrame(ui, 'arquivo criado');
@@ -93,8 +95,8 @@ describe('approval modes (US1)', () => {
   it('auto-edit still asks for commands; auto asks only for destructive ones, with the reason', async () => {
     const ui = mount([toolCall('c1', 'run_command', { command: 'rm -rf tmp' }), answer('feito')]);
     await waitForFrame(ui, 'Pedir permissão');
-    ui.stdin.write(KEYS.tab);
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'Automático');
     await send(ui, 'apague tmp');
     await waitForFrame(ui, '[y]');
@@ -111,7 +113,7 @@ describe('approval modes (US1)', () => {
     await waitForFrame(ui, 'Pedir permissão');
     await send(ui, 'crie a.txt');
     await waitForFrame(ui, '[y]');
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'Aceitar edições');
     expect(ui.controller.session.state).toBe('awaiting_confirmation');
     expect(ui.lastFrame()).toContain('[y]');
@@ -134,18 +136,18 @@ describe('approval modes (US1)', () => {
 
     await send(ui, '/model');
     await waitForFrame(ui, 'Selecionar modelo');
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await tick();
     expect(ui.controller.approvalMode).toBe('yolo');
     ui.stdin.write(KEYS.esc);
     await waitFor(() => ui.controller.dialog === undefined, 3000, 'closed');
   });
 
-  it('starts in the configured mode (settings.tools.approvalMode) and never writes the Tab change', async () => {
+  it('starts in the configured mode (settings.tools.approvalMode) and never writes the Shift+Tab change', async () => {
     const ui = mount([answer('ok')], { settings: { tools: { approvalMode: 'auto' } } });
     await waitForFrame(ui, 'Automático');
     expect(ui.controller.approvalMode).toBe('auto');
-    ui.stdin.write(KEYS.tab);
+    ui.stdin.write(KEYS.shiftTab);
     await waitForFrame(ui, 'YOLO');
     // the settings object the controller holds is untouched: a restart would start in `auto` again
     expect(ui.controller.settings.tools.approvalMode).toBe('auto');

@@ -47,7 +47,8 @@ describe('slash commands', () => {
     await executeSlash('/help', ctl);
     const help = ctl.notices.at(-1)?.text ?? '';
     expect(help).toContain('/approval-mode');
-    expect(help).toContain('Tab / Shift+Tab');
+    expect(help).toContain('Shift+Tab');
+    expect(help).toContain('accept the highlighted command suggestion');
     expect(help).toContain('ask_user');
     for (const m of ['default', 'auto-edit', 'auto', 'yolo']) expect(help).toContain(m);
 

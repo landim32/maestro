@@ -19,7 +19,7 @@ export interface InputPromptProps {
   /** Available columns for the whole prompt box. */
   columns: number;
   color: boolean;
-  /** Slash commands for the suggestion list shown while typing `/…` (↑/↓ select, Enter/→ accept). */
+  /** Slash commands for the suggestion list shown while typing `/…` (↑/↓ select, Enter/Tab/→ accept). */
   commands?: ReadonlyArray<Command>;
 }
 
@@ -248,8 +248,15 @@ export function InputPrompt({
         }
         return;
       }
-      // Tab belongs to the approval-mode cycle (useKeyboard); never insert it.
-      if (key.meta || key.escape || key.tab) return;
+      if (key.tab) {
+        // Tab accepts the highlighted suggestion (Shift+Tab is the approval-mode cycle, in useKeyboard)
+        if (!key.shift && current && !browsingHistory) {
+          const completion = Array.from(completionFor(current));
+          edit(completion, completion.length);
+        }
+        return;
+      }
+      if (key.meta || key.escape) return;
       const text = Array.from(input.replace(/\t/g, '').replace(/\r\n?/g, '\n'));
       if (text.length > 0) {
         chars.splice(pos, 0, ...text);

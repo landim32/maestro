@@ -16,7 +16,7 @@ export interface KeyboardHandlers {
   /** When a modal dialog is open, navigation keys are routed here instead. */
   dialogOpen?: boolean;
   onDialogKey?: (key: DialogKey) => void;
-  /** Tab (+1) / Shift+Tab (−1) cycle the approval mode (contracts/approval-modes.md § 2). */
+  /** Shift+Tab cycles the approval mode (contracts/approval-modes.md § 2). */
   onCycleMode?: (dir: 1 | -1) => void;
   /** Keys for the ask_user dialog while `state === 'awaiting_answer'` (contracts/ask-user.md § 3). */
   onQuestionKey?: (key: AskUserKey) => void;
@@ -36,9 +36,9 @@ export function isScrollKey(key: Key): boolean {
 
 /**
  * Global shortcuts: Esc / Ctrl+C cancel, Ctrl+C twice exits, y/n answer confirmations,
- * PageUp/PageDown/Home/End/Shift+↑↓ scroll the transcript, Tab / Shift+Tab cycle the approval
+ * PageUp/PageDown/Home/End/Shift+↑↓ scroll the transcript, Shift+Tab cycles the approval
  * mode (also while a confirmation is pending — the pending action keeps waiting). With a dialog
- * open, ↑/↓/Enter/Esc go to the dialog (contracts/dialog-flows.md § 1) and Tab is ignored;
+ * open, ↑/↓/Enter/Esc go to the dialog (contracts/dialog-flows.md § 1) and Shift+Tab is ignored;
  * Ctrl+C twice still exits.
  */
 export function useKeyboard({
@@ -90,8 +90,9 @@ export function useKeyboard({
       return;
     }
 
+    // Shift+Tab cycles the approval mode; plain Tab belongs to the prompt (completes a suggestion).
     if (key.tab) {
-      onCycleMode?.(key.shift ? -1 : 1);
+      if (key.shift) onCycleMode?.(1);
       return;
     }
 

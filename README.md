@@ -4,7 +4,7 @@ Assistente de IA para o terminal com suporte a múltiplos modelos. Hoje é um ch
 
 - Provedores: **Claude** (Anthropic) e **Qwen** (Alibaba Cloud DashScope). Ative e configure cada um em `settings.json`.
 - Sessão interativa com streaming, histórico de conversa, troca de provedor a quente (`/model`), cancelamento com Esc.
-- Ferramentas: ler arquivos, listar diretórios, escrever arquivos e executar comandos, sempre confinadas à pasta atual. Quatro modos de aprovação (Tab alterna) decidem o que pede sua confirmação; `ask_user` deixa o modelo fazer perguntas de múltipla escolha.
+- Ferramentas: ler arquivos, listar diretórios, escrever arquivos e executar comandos, sempre confinadas à pasta atual. Quatro modos de aprovação (Shift+Tab alterna) decidem o que pede sua confirmação; `ask_user` deixa o modelo fazer perguntas de múltipla escolha.
 - Modo não interativo (`maestro -p "..."`) para scripts.
 - Software livre (MIT), e assim continuará. Partes adaptadas do [qwen-code](https://github.com/QwenLM/qwen-code); veja [Créditos](#créditos).
 
@@ -115,7 +115,8 @@ Na sessão:
 | `/auth`, `/connect`, `/login`            | Abre o diálogo para conectar um provedor (Claude API, Claude Auth Login, Qwen)                                                              |
 | `/model`                                 | Abre o seletor com os modelos de cada provedor agrupados e o ativo marcado; "Digitar outro modelo…" pede o provedor e grava o nome na lista |
 | `/model qwen` / `/model claude qwen-max` | Troca provedor (e modelo) mantendo a conversa; um modelo novo entra na lista do provedor                                                    |
-| Tab / Shift+Tab                          | Avança / volta o modo de aprovação (veja abaixo); vale só para a sessão                                                                     |
+| Shift+Tab                                | Avança o modo de aprovação (veja abaixo); vale só para a sessão                                                                             |
+| Tab / → (seta direita)                   | Completa a sugestão de comando destacada enquanto o texto começa com ; ↑/↓ escolhem a sugestão                                              |
 | `/approval-mode [modo]`                  | Mostra ou troca o modo de aprovação por texto                                                                                               |
 | `/speckit.specify`, `/speckit.plan`, …   | Fluxo Spec Kit nativo (veja abaixo); `/speckit.init` instala, `/speckit.status` mostra a feature atual                                      |
 | → (seta direita)                         | Completa a primeira sugestão de comando enquanto o texto começa com `/`                                                                     |
@@ -130,7 +131,7 @@ Na sessão:
 
 ### Modos de aprovação
 
-Como no qwen-code, o Maestro tem quatro níveis de autonomia para as ações do modelo. A barra de status mostra o modo em vigor; **Tab** avança no ciclo e **Shift+Tab** volta (quando o terminal o distingue). A troca vale só para a sessão; o modo inicial vem de `--approval-mode`, `--yolo` ou `tools.approvalMode` no `settings.json`.
+Como no qwen-code, o Maestro tem quatro níveis de autonomia para as ações do modelo. A barra de status mostra o modo em vigor; **Shift+Tab** avança no ciclo (a barra mostra "(Shift+Tab para trocar)" ao lado do modo). A troca vale só para a sessão; o modo inicial vem de `--approval-mode`, `--yolo` ou `tools.approvalMode` no `settings.json`.
 
 | Modo                          | Edição de arquivo | Comando | Comando destrutivo |
 | ----------------------------- | ----------------- | ------- | ------------------ |
