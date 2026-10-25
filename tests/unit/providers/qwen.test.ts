@@ -148,7 +148,7 @@ describe('qwen provider — streaming', () => {
       name: 'read_file' as const,
       description: 'd',
       inputSchema: z.object({ path: z.string() }),
-      requiresConfirmation: false,
+      kind: 'read' as const,
       run: async () => ({ output: '', isError: false }),
     };
     const events = await drain(createQwenProvider(makeCtx(qwenCfg)).stream(req({ tools: [tool] })));
@@ -275,7 +275,7 @@ describe('qwen provider — history conversion', () => {
         name: 'run_command',
         description: 'sh',
         inputSchema: z.object({ command: z.string() }),
-        requiresConfirmation: true,
+        kind: 'command',
         run: async () => ({ output: '', isError: false }),
       },
     ]);

@@ -8,11 +8,12 @@ import type { ProviderContext } from './providers/types.js';
 import { Session } from './session/session.js';
 import { SessionController } from './session/controller.js';
 import { buildSystemPrompt } from './session/systemPrompt.js';
-import { toolsFor } from './tools/registry.js';
+import { hasWorkspaceTools, toolsFor } from './tools/registry.js';
 import { formatError, toMaestroError } from './utils/errors.js';
 import { createLogger } from './utils/logger.js';
 import { isInteractive } from './utils/tty.js';
-import { debugLogPath } from './config/paths.js';
+import { debugLogPath, historyPath } from './config/paths.js';
+import { fileHistoryStore, InputHistory } from './session/history.js';
 import { VERSION } from './version.js';
 
 async function main(argv: string[]): Promise<number> {
@@ -40,7 +41,12 @@ async function main(argv: string[]): Promise<number> {
   try {
     loaded = loadSettings({
       configPath: args.config,
-      overrides: { provider: args.provider, model: args.model, noTools: !args.tools },
+      overrides: {
+        provider: args.provider,
+        model: args.model,
+        noTools: !args.tools,
+        approvalMode: args.approvalMode,
+      },
     });
   } catch (err) {
     if (err instanceof ConfigError) {
@@ -86,6 +92,7 @@ async function main(argv: string[]): Promise<number> {
     cwd,
     tools: tools.length,
     interactive,
+    approvalMode: loaded.settings.tools.approvalMode,
   });
   const session = new Session({
     cwd,
@@ -96,12 +103,20 @@ async function main(argv: string[]): Promise<number> {
     session,
     ctx,
     tools,
-    system: buildSystemPrompt({ cwd, toolsEnabled: tools.length > 0 }),
+    system: buildSystemPrompt({
+      cwd,
+      toolsEnabled: hasWorkspaceTools(tools),
+      askUser: tools.some((t) => t.name === 'ask_user'),
+    }),
     debug: args.debug,
     interactive: !nonInteractive,
     logger,
     settingsPaths: { globalPath: loaded.globalPath, cwd },
     env: process.env,
+    // Input history is interactive-only: `-p` neither reads nor writes it (contracts/history.md § 2).
+    history: nonInteractive
+      ? undefined
+      : new InputHistory(fileHistoryStore(historyPath(process.env), logger)),
   });
 
   if (nonInteractive) {

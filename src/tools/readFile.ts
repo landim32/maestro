@@ -18,7 +18,7 @@ export const readFileTool: ToolDefinition<ReadFileInput> = {
   description:
     'Read a UTF-8 text file inside the working directory. Returns numbered lines. Use offset/limit for large files.',
   inputSchema,
-  requiresConfirmation: false,
+  kind: 'read',
   async run(input, ctx) {
     const abs = resolveInsideCwd(ctx.cwd, input.path);
     const stat = await fs.stat(abs).catch(() => null);

@@ -51,6 +51,6 @@ describe('read_file', () => {
   it('validates input with its schema', () => {
     expect(readFileTool.inputSchema.safeParse({ path: 'a', offset: 0 }).success).toBe(false);
     expect(readFileTool.inputSchema.safeParse({}).success).toBe(false);
-    expect(readFileTool.requiresConfirmation).toBe(false);
+    expect(readFileTool.kind).toBe('read');
   });
 });

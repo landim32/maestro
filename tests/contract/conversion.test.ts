@@ -52,13 +52,13 @@ describe('contract: history and tool conversion per provider', () => {
   it('Anthropic messages', () => {
     expect(toAnthropicMessages(history)).toMatchSnapshot();
   });
-  it('Anthropic tools (all four workspace tools)', () => {
+  it('Anthropic tools (all tools incl. ask_user)', () => {
     expect(toAnthropicTools(allTools())).toMatchSnapshot();
   });
   it('OpenAI-compatible messages', () => {
     expect(toOpenAIMessages('SYSTEM', history)).toMatchSnapshot();
   });
-  it('OpenAI-compatible tools (all four workspace tools)', () => {
+  it('OpenAI-compatible tools (all tools incl. ask_user)', () => {
     expect(toOpenAITools(allTools())).toMatchSnapshot();
   });
   it('both conversions keep tool call ids aligned with their results', () => {

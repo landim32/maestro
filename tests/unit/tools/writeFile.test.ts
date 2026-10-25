@@ -17,8 +17,8 @@ beforeEach(() => {
 afterEach(() => fs.rmSync(cwd, { recursive: true, force: true }));
 
 describe('write_file', () => {
-  it('requires confirmation and previews a new file with + lines without writing it', async () => {
-    expect(writeFileTool.requiresConfirmation).toBe(true);
+  it('has kind edit and previews a new file with + lines without writing it', async () => {
+    expect(writeFileTool.kind).toBe('edit');
     const preview = await writeFileTool.preview!(
       { path: 'new/hello.txt', content: 'olá\nmundo' },
       ctx,

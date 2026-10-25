@@ -23,7 +23,11 @@ describe('SessionController dialogs', () => {
     const { ctl, session } = make();
     const dialog = {
       type: 'model' as const,
-      flow: initialModelFlow(ctl.statuses(), ctl.activeModel),
+      flow: initialModelFlow({
+        statuses: ctl.statuses(),
+        settings: ctl.settings,
+        activeModel: ctl.activeModel,
+      }),
     };
     session.beginGeneration();
     expect(ctl.openDialog(dialog)).toBe(false);
@@ -37,7 +41,14 @@ describe('SessionController dialogs', () => {
 
   it('ignores chat input while a dialog is open', async () => {
     const { ctl, provider } = make();
-    ctl.openDialog({ type: 'model', flow: initialModelFlow(ctl.statuses(), ctl.activeModel) });
+    ctl.openDialog({
+      type: 'model',
+      flow: initialModelFlow({
+        statuses: ctl.statuses(),
+        settings: ctl.settings,
+        activeModel: ctl.activeModel,
+      }),
+    });
     const r = await ctl.submit('hello');
     expect(r).toBeUndefined();
     expect(provider.requests).toHaveLength(0);

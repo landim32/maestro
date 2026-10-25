@@ -5,6 +5,7 @@ import { initialSettingsJson } from './defaults.js';
 import { anthropicCredentialDirs, globalSettingsPath, projectSettingsPath } from './paths.js';
 import { formatZodIssues, settingsSchema, PROVIDER_IDS } from './schema.js';
 import type { ProviderId, Settings } from './schema.js';
+import type { ApprovalMode } from '../tools/approval.js';
 
 export type CredentialSource = 'config' | 'env' | 'profile' | 'none';
 
@@ -12,6 +13,8 @@ export interface LoadOverrides {
   provider?: ProviderId;
   model?: string;
   noTools?: boolean;
+  /** `--approval-mode` / `--yolo` (contracts/approval-modes.md § 5). */
+  approvalMode?: ApprovalMode;
 }
 
 export interface LoadOptions {
@@ -106,9 +109,10 @@ function applyOverrides(raw: Json, overrides: LoadOverrides | undefined): Json {
   if (!overrides) return raw;
   const out = ensureProviders(raw);
   if (overrides.provider) out['activeProvider'] = overrides.provider;
-  if (overrides.noTools) {
+  if (overrides.noTools || overrides.approvalMode) {
     const tools = isPlainObject(out['tools']) ? { ...(out['tools'] as Json) } : {};
-    tools['enabled'] = false;
+    if (overrides.noTools) tools['enabled'] = false;
+    if (overrides.approvalMode) tools['approvalMode'] = overrides.approvalMode;
     out['tools'] = tools;
   }
   if (overrides.model) {

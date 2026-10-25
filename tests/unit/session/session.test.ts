@@ -63,11 +63,39 @@ describe('Session', () => {
       tool: {} as never,
       input: {},
       previewText: 'preview',
+      mode: 'default',
       resolve: () => {},
     });
     expect(s.state).toBe('awaiting_confirmation');
     s.setPendingConfirmation(undefined);
     expect(s.state).toBe('generating');
+  });
+
+  /** specs/005 contracts/ask-user.md — pending question lifecycle */
+  it('enters awaiting_answer for a pending question; cancel() declines it; endGeneration clears it', () => {
+    const s = make();
+    s.beginGeneration();
+    const outcomes: unknown[] = [];
+    const pending = {
+      request: { questions: [] },
+      resolve: (o: unknown) => outcomes.push(o),
+    };
+    s.setPendingQuestion(pending);
+    expect(s.state).toBe('awaiting_answer');
+    expect(s.pendingQuestion).toBe(pending);
+    s.setPendingQuestion(undefined);
+    expect(s.state).toBe('generating');
+
+    s.setPendingQuestion(pending);
+    s.cancel();
+    expect(outcomes).toEqual([{ answered: false }]);
+    expect(s.pendingQuestion).toBeUndefined();
+    expect(s.abortController?.signal.aborted).toBe(true);
+
+    s.setPendingQuestion(pending);
+    s.endGeneration();
+    expect(s.pendingQuestion).toBeUndefined();
+    expect(s.state).toBe('idle');
   });
 
   it('rejects /clear and provider switch while not idle, preserving history on switch', () => {

@@ -60,6 +60,7 @@ describe('loadSettings', () => {
       enabled: true,
       commandTimeoutMs: 60000,
       maxOutputChars: 20000,
+      approvalMode: 'default',
     });
   });
 
@@ -107,11 +108,37 @@ describe('loadSettings', () => {
       cwd,
       env: env({ MAESTRO_PROVIDER: 'claude', DASHSCOPE_API_KEY: 'k-9999' }),
       platform: 'linux',
-      overrides: { provider: 'qwen', model: 'qwen-plus', noTools: true },
+      overrides: { provider: 'qwen', model: 'qwen-plus', noTools: true, approvalMode: 'auto' },
     });
     expect(loaded.settings.activeProvider).toBe('qwen');
     expect(loaded.settings.providers.qwen.model).toBe('qwen-plus');
     expect(loaded.settings.tools.enabled).toBe(false);
+    expect(loaded.settings.tools.approvalMode).toBe('auto');
+  });
+
+  /** contracts/approval-modes.md § 5 — precedence of tools.approvalMode */
+  it('tools.approvalMode: argument > project file > global file > default', () => {
+    writeGlobal({ tools: { approvalMode: 'auto-edit' } });
+    expect(loadSettings({ cwd, env: env(), platform: 'linux' }).settings.tools.approvalMode).toBe(
+      'auto-edit',
+    );
+    fs.mkdirSync(path.join(cwd, '.maestro'), { recursive: true });
+    fs.writeFileSync(
+      path.join(cwd, '.maestro', 'settings.json'),
+      JSON.stringify({ tools: { approvalMode: 'auto' } }),
+    );
+    expect(loadSettings({ cwd, env: env(), platform: 'linux' }).settings.tools.approvalMode).toBe(
+      'auto',
+    );
+    expect(
+      loadSettings({ cwd, env: env(), platform: 'linux', overrides: { approvalMode: 'yolo' } })
+        .settings.tools.approvalMode,
+    ).toBe('yolo');
+    writeGlobal({});
+    fs.rmSync(path.join(cwd, '.maestro'), { recursive: true, force: true });
+    expect(loadSettings({ cwd, env: env(), platform: 'linux' }).settings.tools.approvalMode).toBe(
+      'default',
+    );
   });
 
   it('reports claude credential source from config, env, profile or none', () => {

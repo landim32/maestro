@@ -38,9 +38,14 @@ describe('/model', () => {
     const flow = ctl.dialog?.type === 'model' ? ctl.dialog.flow : undefined;
     expect(flow?.step).toBe('list');
     if (flow?.step === 'list') {
-      expect(flow.items.map((i) => i.providerId)).toEqual(['claude', 'qwen']);
-      expect(flow.items[flow.selected]?.providerId).toBe('claude');
-      expect(flow.items[1]?.maskedKey).toBe('****7777');
+      // one row per catalogue model, grouped by provider (contracts/model-catalog.md § 2)
+      expect([...new Set(flow.items.map((i) => i.providerId))]).toEqual(['claude', 'qwen']);
+      expect(flow.items[flow.selected]).toMatchObject({
+        providerId: 'claude',
+        model: 'claude-opus-5-5',
+        active: true,
+      });
+      expect(flow.items.find((i) => i.providerId === 'qwen')?.maskedKey).toBe('****7777');
     }
   });
 
@@ -52,6 +57,10 @@ describe('/model', () => {
     expect(text).toMatch(/qwen\s+ready/);
     expect(text).toContain('****7777');
     expect(text).not.toContain('sk-qwen-7777');
+    // catalogues per provider with the active model starred (contracts/model-catalog.md § 3)
+    expect(text).toContain('Models:');
+    expect(text).toMatch(/claude:\s+\* claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5/);
+    expect(text).toMatch(/qwen:\s+qwen3-coder-plus, qwen3-coder-flash, qwen3-max/);
   });
 
   it('switches provider preserving history; following turns go to the new provider', async () => {

@@ -17,6 +17,13 @@ export function globalSettingsPath(env: NodeJS.ProcessEnv = process.env): string
   return path.join(globalConfigDir(env), SETTINGS_FILE_NAME);
 }
 
+export const HISTORY_FILE_NAME = 'history.jsonl';
+
+/** `~/.maestro/history.jsonl` — interactive input history (contracts/history.md). */
+export function historyPath(env: NodeJS.ProcessEnv = process.env): string {
+  return path.join(globalConfigDir(env), HISTORY_FILE_NAME);
+}
+
 /** `<cwd>/.maestro/settings.json` */
 export function projectSettingsPath(cwd: string): string {
   return path.join(cwd, CONFIG_DIR_NAME, SETTINGS_FILE_NAME);

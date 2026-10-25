@@ -1,4 +1,5 @@
 import { Box, Text } from 'ink';
+import { approvalModeInfo } from '../../tools/approval.js';
 import type { PendingToolAction } from '../../tools/types.js';
 
 export interface ConfirmationDialogProps {
@@ -29,6 +30,7 @@ export function ConfirmationDialog({
       <Text color={c('yellow')} bold>
         The model wants to run {action.tool.name}
       </Text>
+      {action.reason && <Text color={c('yellow')}>Confirmação exigida: {action.reason}</Text>}
       <Box flexDirection="column" marginTop={1}>
         {shown.map((l, i) => (
           <Text
@@ -50,6 +52,7 @@ export function ConfirmationDialog({
             [n]
           </Text>{' '}
           decline
+          <Text dimColor>{`   modo: ${approvalModeInfo(action.mode).label}`}</Text>
         </Text>
       </Box>
     </Box>

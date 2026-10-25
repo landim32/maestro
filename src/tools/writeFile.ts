@@ -19,9 +19,9 @@ export type WriteFileInput = z.infer<typeof inputSchema>;
 export const writeFileTool: ToolDefinition<WriteFileInput> = {
   name: 'write_file',
   description:
-    'Create or overwrite a text file inside the working directory with the given full content. The user must approve the change.',
+    'Create or overwrite a text file inside the working directory with the given full content. May require user approval depending on the approval mode.',
   inputSchema,
-  requiresConfirmation: true,
+  kind: 'edit',
   async preview(input, ctx) {
     const abs = resolveInsideCwd(ctx.cwd, input.path);
     const existing = await fs.readFile(abs, 'utf8').catch(() => null);
@@ -40,7 +40,10 @@ export const writeFileTool: ToolDefinition<WriteFileInput> = {
       'current',
       'proposed',
     );
-    return patch.split('\n').slice(2).join('\n'); // drop the "===" header lines
+    const body = patch.split('\n').slice(2); // drop the "===" header lines
+    const added = body.filter((l) => l.startsWith('+') && !l.startsWith('+++')).length;
+    const removed = body.filter((l) => l.startsWith('-') && !l.startsWith('---')).length;
+    return [`edit: ${input.path} (+${added} −${removed})`, ...body].join('\n');
   },
   async run(input, ctx) {
     const abs = resolveInsideCwd(ctx.cwd, input.path);

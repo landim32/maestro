@@ -234,7 +234,9 @@ describe('SetupDriver — /auth Qwen with fields', () => {
     h.ctl.reloadSettings();
     const d = h.ctl.setup;
     expect(d.openModel()).toBe(true);
-    d.dispatch({ type: 'down' }); // qwen
+    d.dispatch({ type: 'down' }); // claude-sonnet-5-5
+    d.dispatch({ type: 'down' }); // claude-haiku-5-5
+    d.dispatch({ type: 'down' }); // qwen / qwen3-coder-plus
     d.dispatch({ type: 'enter' });
     expect(h.session.activeProviderId).toBe('qwen');
     expect(h.writes.at(-1)).toEqual([

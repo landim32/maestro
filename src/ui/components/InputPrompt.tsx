@@ -1,5 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Box, Text, useInput } from 'ink';
+import { EDITING, historyNavigate } from '../../session/history.js';
+import type { HistoryCursor } from '../../session/history.js';
 import { wrapToWidth } from '../../utils/width.js';
 import { isScrollKey } from '../hooks/useKeyboard.js';
 import { isMouseSequence } from '../hooks/useMouseWheel.js';
@@ -9,8 +11,8 @@ export const MAX_INPUT_LINES = 10;
 export interface InputPromptProps {
   active: boolean;
   placeholder?: string;
-  /** Previous user messages for ↑/↓ navigation (oldest first). */
-  historyItems: string[];
+  /** Persistent input history for ↑/↓ navigation (oldest first) — contracts/history.md § 3. */
+  historyItems: readonly string[];
   onSubmit: (text: string) => void;
   /** Available columns for the whole prompt box. */
   columns: number;
@@ -25,44 +27,52 @@ export function InputPrompt({
   columns,
   color,
 }: InputPromptProps) {
-  const [value, setValue] = useState('');
-  const [cursorIdx, setCursorIdx] = useState<number | null>(null); // index into historyItems
+  const [value, setValueState] = useState('');
+  // Refs mirror the state so that several keys delivered in one tick (key repeat, paste)
+  // each see the result of the previous one instead of a stale closure.
+  const valueRef = useRef('');
+  const cursorRef = useRef<HistoryCursor>(EDITING);
+  const setValue = (v: string) => {
+    valueRef.current = v;
+    setValueState(v);
+  };
+  const leaveHistory = () => {
+    cursorRef.current = EDITING; // editing leaves the history; the edited text is the new draft
+  };
 
   useInput(
     (input, key) => {
       if (isScrollKey(key) || isMouseSequence(input)) return;
       if (key.return) {
-        const text = value;
+        const text = valueRef.current;
         setValue('');
-        setCursorIdx(null);
+        leaveHistory();
         if (text.trim() !== '') onSubmit(text);
         return;
       }
       if (key.backspace || key.delete) {
-        setValue((v) => Array.from(v).slice(0, -1).join(''));
+        setValue(Array.from(valueRef.current).slice(0, -1).join(''));
+        leaveHistory();
         return;
       }
-      if (key.upArrow) {
-        if (historyItems.length === 0) return;
-        const next = cursorIdx === null ? historyItems.length - 1 : Math.max(0, cursorIdx - 1);
-        setCursorIdx(next);
-        setValue(historyItems[next] ?? '');
+      if (key.upArrow || key.downArrow) {
+        const r = historyNavigate(
+          cursorRef.current,
+          key.upArrow ? 'up' : 'down',
+          historyItems,
+          valueRef.current,
+        );
+        cursorRef.current = r.cursor;
+        if (r.value !== valueRef.current) setValue(r.value);
         return;
       }
-      if (key.downArrow) {
-        if (cursorIdx === null) return;
-        const next = cursorIdx + 1;
-        if (next >= historyItems.length) {
-          setCursorIdx(null);
-          setValue('');
-        } else {
-          setCursorIdx(next);
-          setValue(historyItems[next] ?? '');
-        }
-        return;
-      }
+      // Tab belongs to the approval-mode cycle (useKeyboard); never insert it.
       if (key.ctrl || key.meta || key.escape || key.tab) return;
-      if (input) setValue((v) => v + input.replace(/\r\n?/g, '\n'));
+      const text = input.replace(/\t/g, '');
+      if (text) {
+        setValue(valueRef.current + text.replace(/\r\n?/g, '\n'));
+        leaveHistory();
+      }
     },
     { isActive: active },
   );

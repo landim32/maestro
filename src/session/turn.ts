@@ -1,5 +1,14 @@
 import type { ContentPart, ModelProvider, ProviderEvent, StopReason } from '../providers/types.js';
-import type { PendingToolAction, ToolContext, ToolDefinition, ToolResult } from '../tools/types.js';
+import { classifyAction, needsConfirmation } from '../tools/approval.js';
+import type { ApprovalMode } from '../tools/approval.js';
+import type {
+  AskUserOutcome,
+  AskUserRequest,
+  PendingToolAction,
+  ToolContext,
+  ToolDefinition,
+  ToolResult,
+} from '../tools/types.js';
 import { MaestroError } from '../utils/errors.js';
 import type { Session } from './session.js';
 
@@ -9,8 +18,12 @@ export interface TurnCallbacks {
   onDelta?: (text: string) => void;
   onNotice?: (text: string, level: 'info' | 'warn') => void;
   onError?: (err: MaestroError) => void;
-  /** Called for tool calls that require confirmation. Resolve true to approve. */
+  /** Called for tool calls that require confirmation in the current mode. Resolve true to approve. */
   confirm?: (action: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
+  /** Called by `ask_user`; absent in non-interactive runs (contracts/ask-user.md § 4). */
+  ask?: (request: AskUserRequest) => Promise<AskUserOutcome>;
+  /** An edit/command ran without confirmation because of the approval mode (FR-005). */
+  onAutoApproved?: (name: string, input: unknown, summary: string, mode: ApprovalMode) => void;
   onToolStart?: (name: string, input: unknown) => void;
   onToolEnd?: (name: string, result: ToolResult) => void;
 }
@@ -19,6 +32,8 @@ export interface TurnOptions {
   system: string;
   tools: ToolDefinition[];
   toolSettings: ToolContext['settings'];
+  /** Live approval mode; a getter so Tab during the turn affects the next tool call. */
+  approvalMode?: () => ApprovalMode;
   maxToolIterations?: number;
 }
 
@@ -72,6 +87,18 @@ async function collect(
   return c;
 }
 
+async function previewOf(tool: ToolDefinition, input: unknown, ctx: ToolContext): Promise<string> {
+  try {
+    return tool.preview ? await tool.preview(input, ctx) : JSON.stringify(input, null, 2);
+  } catch (err) {
+    return `(preview unavailable: ${err instanceof Error ? err.message : String(err)})`;
+  }
+}
+
+function firstLine(s: string): string {
+  return s.split('\n')[0] ?? '';
+}
+
 async function executeTool(
   tool: ToolDefinition,
   callId: string,
@@ -79,6 +106,7 @@ async function executeTool(
   ctx: ToolContext,
   session: Session,
   cb: TurnCallbacks,
+  opts: TurnOptions,
 ): Promise<ToolResult> {
   const parsed = tool.inputSchema.safeParse(rawInput);
   if (!parsed.success) {
@@ -89,26 +117,36 @@ async function executeTool(
   }
   const input = parsed.data;
 
-  if (tool.requiresConfirmation) {
-    if (!cb.confirm) {
-      return {
-        isError: true,
-        output: 'confirmation required; not available in non-interactive mode',
-      };
+  // Approval policy (contracts/approval-modes.md): read/question never ask; the rest depends on the mode.
+  const { kind, reason } = classifyAction(tool, input);
+  if (kind !== 'read' && kind !== 'question') {
+    const mode = opts.approvalMode?.() ?? 'default';
+    const previewText = await previewOf(tool, input, ctx);
+    if (needsConfirmation(mode, kind)) {
+      if (!cb.confirm) {
+        return {
+          isError: true,
+          output: `confirmation required (${mode}); not available in non-interactive mode`,
+        };
+      }
+      const approved = await new Promise<boolean>((resolve) => {
+        const action: PendingToolAction = {
+          callId,
+          tool,
+          input,
+          previewText,
+          reason,
+          mode,
+          resolve,
+        };
+        session.setPendingConfirmation(action);
+        cb.confirm!(action).then(resolve, () => resolve(false));
+      });
+      session.setPendingConfirmation(undefined);
+      if (!approved) return { isError: true, output: 'user declined' };
+    } else {
+      cb.onAutoApproved?.(tool.name, input, firstLine(previewText), mode);
     }
-    let previewText = '';
-    try {
-      previewText = tool.preview ? await tool.preview(input, ctx) : JSON.stringify(input, null, 2);
-    } catch (err) {
-      previewText = `(preview unavailable: ${err instanceof Error ? err.message : String(err)})`;
-    }
-    const approved = await new Promise<boolean>((resolve) => {
-      const action: PendingToolAction = { callId, tool, input, previewText, resolve };
-      session.setPendingConfirmation(action);
-      cb.confirm!(action).then(resolve, () => resolve(false));
-    });
-    session.setPendingConfirmation(undefined);
-    if (!approved) return { isError: true, output: 'user declined' };
   }
 
   cb.onToolStart?.(tool.name, input);
@@ -138,7 +176,12 @@ export async function runTurn(
   const ac = session.beginGeneration();
   const usage = { inputTokens: 0, outputTokens: 0 };
   const toolMap = new Map(opts.tools.map((t) => [t.name, t]));
-  const toolCtx: ToolContext = { cwd: session.cwd, signal: ac.signal, settings: opts.toolSettings };
+  const toolCtx: ToolContext = {
+    cwd: session.cwd,
+    signal: ac.signal,
+    settings: opts.toolSettings,
+    ask: cb.ask,
+  };
   const maxIter = opts.maxToolIterations ?? MAX_TOOL_ITERATIONS;
   let iterations = 0;
   let fullText = '';
@@ -194,7 +237,7 @@ export async function runTurn(
             results.push({ callId: tc.callId, output: 'cancelled by user', isError: true });
             continue;
           }
-          const r = await executeTool(tool, tc.callId, tc.input, toolCtx, session, cb);
+          const r = await executeTool(tool, tc.callId, tc.input, toolCtx, session, cb, opts);
           results.push({ callId: tc.callId, ...r });
         }
         session.pushToolResults(results);

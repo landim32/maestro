@@ -1,3 +1,5 @@
+import type { ApprovalMode } from '../tools/approval.js';
+
 export type QwenProtocol = 'openai' | 'anthropic';
 
 /** Qwen Cloud (token plan) endpoints — one per wire protocol. */
@@ -26,12 +28,15 @@ export const DEFAULTS = {
   activeProvider: 'claude',
   claude: {
     model: 'claude-opus-5-5',
+    /** Initial catalogue shown by /model (contracts/model-catalog.md § 1). */
+    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
     maxTokens: 16_000,
     effort: 'medium',
     fallbacks: true,
   },
   qwen: {
     model: 'qwen3-coder-plus',
+    models: ['qwen3-coder-plus', 'qwen3-coder-flash', 'qwen3-max'],
     maxTokens: 16_000,
     protocol: 'openai' as QwenProtocol,
   },
@@ -39,6 +44,7 @@ export const DEFAULTS = {
     enabled: true,
     commandTimeoutMs: 60_000,
     maxOutputChars: 20_000,
+    approvalMode: 'default' as ApprovalMode,
   },
 } as const;
 
@@ -58,6 +64,7 @@ export const INITIAL_SETTINGS = {
         "Uses credentials already on this machine: ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN, or an 'ant auth login' profile. Set apiKey here only if you must.",
       enabled: true,
       model: DEFAULTS.claude.model,
+      models: [...DEFAULTS.claude.models],
       maxTokens: DEFAULTS.claude.maxTokens,
       effort: DEFAULTS.claude.effort,
       fallbacks: DEFAULTS.claude.fallbacks,
@@ -67,14 +74,18 @@ export const INITIAL_SETTINGS = {
       enabled: false,
       protocol: DEFAULTS.qwen.protocol,
       model: DEFAULTS.qwen.model,
+      models: [...DEFAULTS.qwen.models],
       maxTokens: DEFAULTS.qwen.maxTokens,
       apiKey: '',
     },
   },
   tools: {
+    _comment:
+      "approvalMode: 'default' (ask before every edit and command), 'auto-edit' (edits run, commands ask), 'auto' (only destructive commands ask), 'yolo' (never ask). Tab cycles it for the session.",
     enabled: DEFAULTS.tools.enabled,
     commandTimeoutMs: DEFAULTS.tools.commandTimeoutMs,
     maxOutputChars: DEFAULTS.tools.maxOutputChars,
+    approvalMode: DEFAULTS.tools.approvalMode,
   },
   ui: {
     _comment:

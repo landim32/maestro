@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { APPROVAL_MODES } from '../tools/approval.js';
 import { DEFAULTS } from './defaults.js';
 
 export const PROVIDER_IDS = ['claude', 'qwen'] as const;
@@ -21,10 +22,34 @@ const maxTokensSchema = z.number().int().min(1).max(200_000);
 
 export const effortSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']);
 
+/**
+ * Model catalogue of a provider (contracts/model-catalog.md § 1): single tokens, no duplicates.
+ * An empty array means "not set" so it falls back to the provider default.
+ */
+function modelsSchema(defaults: readonly string[]) {
+  return z.preprocess(
+    (v) => (Array.isArray(v) && v.length === 0 ? undefined : v),
+    z
+      .array(z.string().regex(/^\S+$/, 'must be a single non-empty token'))
+      .superRefine((models, ctx) => {
+        const seen = new Set<string>();
+        for (const m of models) {
+          if (seen.has(m)) {
+            ctx.addIssue({ code: 'custom', message: `duplicate model '${m}'` });
+            return;
+          }
+          seen.add(m);
+        }
+      })
+      .default([...defaults]),
+  );
+}
+
 export const claudeProviderSchema = z.strictObject({
   _comment: comment,
   enabled: z.boolean().default(true),
   model: z.string().min(1, 'must not be empty').default(DEFAULTS.claude.model),
+  models: modelsSchema(DEFAULTS.claude.models),
   maxTokens: maxTokensSchema.default(DEFAULTS.claude.maxTokens),
   apiKey: apiKeySchema,
   baseUrl: baseUrlSchema.optional(),
@@ -40,17 +65,22 @@ export const qwenProviderSchema = z.strictObject({
   /** Wire protocol of the endpoint: OpenAI-compatible (chat completions) or Anthropic-compatible (messages). */
   protocol: qwenProtocolSchema.default(DEFAULTS.qwen.protocol),
   model: z.string().min(1, 'must not be empty').default(DEFAULTS.qwen.model),
+  models: modelsSchema(DEFAULTS.qwen.models),
   maxTokens: maxTokensSchema.default(DEFAULTS.qwen.maxTokens),
   apiKey: apiKeySchema,
   /** Optional: defaults to the protocol's Qwen Cloud endpoint (see resolveQwenBaseUrl). */
   baseUrl: baseUrlSchema.optional(),
 });
 
+/** Initial approval mode (contracts/approval-modes.md § 1); Tab changes it for the session only. */
+export const approvalModeSchema = z.enum(APPROVAL_MODES);
+
 export const toolsSettingsSchema = z.strictObject({
   _comment: comment,
   enabled: z.boolean().default(DEFAULTS.tools.enabled),
   commandTimeoutMs: z.number().int().min(1000).default(DEFAULTS.tools.commandTimeoutMs),
   maxOutputChars: z.number().int().min(1000).default(DEFAULTS.tools.maxOutputChars),
+  approvalMode: approvalModeSchema.default(DEFAULTS.tools.approvalMode),
 });
 
 export const uiSettingsSchema = z.strictObject({

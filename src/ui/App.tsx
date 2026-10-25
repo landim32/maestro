@@ -11,7 +11,9 @@ import { InputPrompt } from './components/InputPrompt.js';
 import { StatusBar } from './components/StatusBar.js';
 import { ConfirmationDialog } from './components/ConfirmationDialog.js';
 import { Transcript } from './components/Transcript.js';
+import { AskUserDialog } from './dialogs/AskUserDialog.js';
 import { DialogHost } from './dialogs/DialogHost.js';
+import type { AskUserKey } from '../setup/askUserFlow.js';
 import { useKeyboard } from './hooks/useKeyboard.js';
 import { useMouseWheel } from './hooks/useMouseWheel.js';
 import { useSession } from './hooks/useSession.js';
@@ -53,6 +55,14 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
     (value: string) => controller.setup.dispatch({ type: 'input', value }),
     [controller],
   );
+  const onQuestionKey = useCallback(
+    (key: AskUserKey) => controller.dispatchQuestion(key),
+    [controller],
+  );
+  const onQuestionInput = useCallback(
+    (value: string) => controller.dispatchQuestion({ type: 'input', value }),
+    [controller],
+  );
 
   const { exitArmed } = useKeyboard({
     state: snap.state,
@@ -62,6 +72,8 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
     viewport,
     dialogOpen: Boolean(dialog),
     onDialogKey,
+    onCycleMode: (dir) => controller.cycleApprovalMode(dir),
+    onQuestionKey,
   });
 
   const onWheel = useCallback((lines: number) => viewport.scrollBy(lines), [viewport]);
@@ -91,6 +103,16 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
     const t = setTimeout(() => setTransientNotice(undefined), 5000);
     return () => clearTimeout(t);
   }, [transientNotice]);
+  // Controller messages (e.g. "modo: YOLO" after Tab) take over the slot for ~3 s, then expire.
+  const transientSeq = snap.transient?.seq;
+  const [expiredSeq, setExpiredSeq] = useState<number | undefined>(undefined);
+  useEffect(() => {
+    if (transientSeq === undefined) return;
+    const t = setTimeout(() => setExpiredSeq(transientSeq), 3000);
+    return () => clearTimeout(t);
+  }, [transientSeq]);
+  const controllerNotice =
+    snap.transient && snap.transient.seq !== expiredSeq ? snap.transient.text : undefined;
 
   const contentWidth = Math.max(10, caps.columns - 1 /* indicator */ - 2 /* padding */);
   const confirmMaxLines = Math.max(3, Math.floor(caps.rows / 2) - 6);
@@ -105,7 +127,7 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
         color={caps.color}
       />
       {dialog ? (
-        <DialogHost dialog={dialog} color={caps.color} onInput={onDialogInput} />
+        <DialogHost dialog={dialog} color={caps.color} onInput={onDialogInput} rows={caps.rows} />
       ) : (
         <Transcript capabilities={caps} actionsRef={viewportRef} onScrollableChange={setScrollable}>
           <MessageList
@@ -130,16 +152,26 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
       {snap.state === 'awaiting_confirmation' && snap.pending && (
         <ConfirmationDialog action={snap.pending} maxLines={confirmMaxLines} color={caps.color} />
       )}
+      {snap.state === 'awaiting_answer' && snap.question && (
+        <AskUserDialog
+          flow={snap.question}
+          color={caps.color}
+          onInput={onQuestionInput}
+          rows={caps.rows}
+        />
+      )}
       <InputPrompt
         active={snap.state === 'idle' && !dialog}
-        historyItems={snap.userInputs}
+        historyItems={snap.historyItems}
         onSubmit={onSubmit}
         placeholder={
           dialog
             ? 'diálogo aberto — Esc para fechar'
             : snap.state === 'idle'
               ? undefined
-              : 'waiting for the model…'
+              : snap.state === 'awaiting_answer'
+                ? 'responda à pergunta acima'
+                : 'waiting for the model…'
         }
         columns={caps.columns}
         color={caps.color}
@@ -149,8 +181,9 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env }: AppProp
         exitArmed={exitArmed}
         usage={snap.usage}
         capabilities={caps}
-        transientNotice={transientNotice}
+        transientNotice={controllerNotice ?? transientNotice}
         scrollable={scrollable && !dialog}
+        approvalMode={snap.approvalMode}
       />
     </Box>
   );

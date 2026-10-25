@@ -23,7 +23,7 @@ export const listDirectoryTool: ToolDefinition<ListDirectoryInput> = {
   description:
     'List files and folders inside the working directory. Folders end with "/". node_modules, .git and build outputs are skipped.',
   inputSchema,
-  requiresConfirmation: false,
+  kind: 'read',
   async run(input, ctx) {
     const rel = input.path ?? '.';
     const abs = resolveInsideCwd(ctx.cwd, rel);

@@ -10,13 +10,8 @@ import type { ConnectionTester } from './connectionTest.js';
 import type { DialogKey } from './dialog.js';
 import { installHints } from './installHints.js';
 import type { MethodId } from './methods.js';
-import {
-  initialModelFlow,
-  modelEffectsFor,
-  modelFlowReducer,
-  refreshModelList,
-} from './modelFlow.js';
-import type { ModelFlowEvent, ModelFlowState } from './modelFlow.js';
+import { initialModelFlow, modelEffectsFor, modelFlowReducer } from './modelFlow.js';
+import type { ModelFlowContext, ModelFlowEvent, ModelFlowState } from './modelFlow.js';
 
 export interface SetupDeps {
   testConnection: ConnectionTester;
@@ -59,8 +54,16 @@ export class SetupDriver {
     return ok;
   }
 
+  private modelCtx(): ModelFlowContext {
+    return {
+      statuses: this.ctl.statuses(),
+      settings: this.ctl.settings,
+      activeModel: this.ctl.activeModel,
+    };
+  }
+
   openModel(): boolean {
-    const flow = initialModelFlow(this.ctl.statuses(), this.ctl.activeModel);
+    const flow = initialModelFlow(this.modelCtx());
     const ok = this.ctl.openDialog({ type: 'model', flow });
     if (ok) this.ctl.logger.log('setup.open', { dialog: 'model' });
     return ok;
@@ -108,9 +111,8 @@ export class SetupDriver {
     const dialog = this.ctl.dialog;
     if (!dialog || dialog.type !== 'model') return;
     const prev = dialog.flow;
-    let next = modelFlowReducer(prev, event);
+    const next = modelFlowReducer(prev, event, this.modelCtx());
     if (next === prev) return;
-    next = refreshModelList(next, this.ctl.statuses(), this.ctl.activeModel);
     this.ctl.setDialog({ type: 'model', flow: next });
     if (next.step !== prev.step) this.runModelEffect(next);
   }
@@ -293,19 +295,23 @@ export class SetupDriver {
         });
         return;
       }
+      // The switch already happened; a failed write only downgrades to a warning (FR-017).
+      let warning: string | undefined;
       try {
         this.ctl.writeSettings([
           { path: 'activeProvider', value: state.providerId },
           { path: `providers.${state.providerId}.model`, value: state.model },
+          ...(state.learn ? this.ctl.rememberModel(state.providerId, state.model) : []),
         ]);
         this.ctl.reloadSettings();
-        this.dispatchModel({ type: 'applied' });
-        // `done` closes immediately on the next dispatch; close now for a snappy UX.
-        this.dispatchModel({ type: 'enter' });
       } catch (err) {
         const msg = err instanceof MaestroError ? err.message : String(err);
-        this.dispatchModel({ type: 'applyError', error: msg });
+        warning = `Não foi possível gravar a configuração: ${msg}`;
+        this.ctl.notice(warning, 'warn');
       }
+      this.dispatchModel({ type: 'applied', warning });
+      // `done` closes immediately on the next dispatch; close now for a snappy UX.
+      this.dispatchModel({ type: 'enter' });
     }
   }
 }

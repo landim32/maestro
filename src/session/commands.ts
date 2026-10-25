@@ -1,5 +1,6 @@
 import type { ProviderId } from '../providers/types.js';
 import type { MethodId } from '../setup/methods.js';
+import { APPROVAL_MODES, approvalModeInfo, parseApprovalMode } from '../tools/approval.js';
 import type { SessionController } from './controller.js';
 
 export interface SlashCommand {
@@ -35,10 +36,55 @@ const help: SlashCommand = {
       '  Esc / Ctrl+C   cancel the current response',
       '  Ctrl+C twice   exit',
       '  y / n          approve / decline a tool action',
+      '  Tab / Shift+Tab  next / previous approval mode',
       '  ↑ / ↓          previous messages',
       '  PgUp / PgDn    scroll the conversation',
+      '',
+      `Approval modes (current: ${approvalModeInfo(ctl.approvalMode).label}):`,
+      ...APPROVAL_MODES.map((m) => {
+        const info = approvalModeInfo(m);
+        return `  ${m.padEnd(10)} ${info.label.padEnd(16)} ${info.description}`;
+      }),
+      '',
+      'Tools: read_file, list_directory, write_file, run_command and ask_user (the model asks you a',
+      'multiple-choice question; ↑↓ / 1-9 choose, Space marks, Enter confirms, Esc declines).',
     );
     ctl.notice(lines.join('\n'), 'info');
+  },
+};
+
+/** contracts/approval-modes.md § 7 — show or change the approval mode for this session. */
+const approvalMode: SlashCommand = {
+  name: 'approval-mode',
+  aliases: ['approval'],
+  usage: '/approval-mode [default|auto-edit|auto|yolo]',
+  description: 'Mostrar/trocar o modo de aprovação da sessão (Tab também troca).',
+  run(ctl, args) {
+    const wanted = args[0];
+    if (wanted === undefined) {
+      const current = approvalModeInfo(ctl.approvalMode);
+      const lines = [`Modo de aprovação: ${current.label} (${current.id})`, ''];
+      for (const m of APPROVAL_MODES) {
+        const info = approvalModeInfo(m);
+        lines.push(
+          `  ${m === ctl.approvalMode ? '●' : '○'} ${m.padEnd(10)} ${info.label.padEnd(16)} ${info.description}`,
+        );
+      }
+      lines.push('', 'Tab avança, Shift+Tab volta; a troca vale só para esta sessão.');
+      ctl.notice(lines.join('\n'), 'info');
+      return;
+    }
+    const mode = parseApprovalMode(wanted);
+    if (!mode) {
+      ctl.notice(`Modo desconhecido '${wanted}'. Opções: ${APPROVAL_MODES.join(', ')}.`, 'warn');
+      return;
+    }
+    if (!ctl.interactive) {
+      ctl.notice('No modo -p o modo de aprovação vem de --approval-mode / --yolo.', 'info');
+      return;
+    }
+    ctl.setApprovalMode(mode);
+    ctl.notice(`Modo de aprovação: ${approvalModeInfo(mode).label} (${mode}).`, 'info');
   },
 };
 
@@ -107,7 +153,7 @@ const model: SlashCommand = {
   },
 };
 
-export const DEFAULT_COMMANDS: SlashCommand[] = [help, auth, model, clear, exit];
+export const DEFAULT_COMMANDS: SlashCommand[] = [help, auth, model, approvalMode, clear, exit];
 
 /** Executes a slash command. Returns false when `input` is not a slash command. */
 export async function executeSlash(input: string, ctl: SessionController): Promise<boolean> {
