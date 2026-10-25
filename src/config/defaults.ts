@@ -40,6 +40,11 @@ export const DEFAULTS = {
     maxTokens: 16_000,
     protocol: 'openai' as QwenProtocol,
   },
+  claudeCode: {
+    model: 'claude-opus-5-5',
+    models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
+    effort: 'medium',
+  },
   tools: {
     enabled: true,
     commandTimeoutMs: 60_000,
@@ -84,6 +89,14 @@ export const INITIAL_SETTINGS = {
       models: [...DEFAULTS.qwen.models],
       maxTokens: DEFAULTS.qwen.maxTokens,
       apiKey: '',
+    },
+    'claude-code': {
+      _comment:
+        'Uses the Claude Code CLI installed and logged in on this machine (your Claude.ai subscription, no API credits). Maestro never reads its credentials. Enable with /auth -> Claude Code. command: optional path to the claude executable.',
+      enabled: false,
+      model: DEFAULTS.claudeCode.model,
+      models: [...DEFAULTS.claudeCode.models],
+      effort: DEFAULTS.claudeCode.effort,
     },
   },
   tools: {

@@ -30,7 +30,7 @@ function rawModels(globalRaw: Json, id: ProviderId): string[] {
   if (Array.isArray(models) && models.length > 0) {
     return dedupe(models.filter((m): m is string => typeof m === 'string'));
   }
-  return [...DEFAULTS[id].models];
+  return [...DEFAULTS[id === 'claude-code' ? 'claudeCode' : id].models];
 }
 
 /**

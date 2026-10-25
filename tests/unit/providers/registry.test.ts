@@ -9,8 +9,8 @@ import { statusLabel } from '../../../src/providers/status.js';
 import { makeCtx } from '../../helpers/context.js';
 
 describe('provider registry', () => {
-  it('registers claude and qwen', () => {
-    expect(registeredProviders()).toEqual(['claude', 'qwen']);
+  it('registers claude, qwen and claude-code', () => {
+    expect(registeredProviders()).toEqual(['claude', 'qwen', 'claude-code']);
     expect(createProvider('claude', makeCtx()).id).toBe('claude');
     expect(createProvider('qwen', makeCtx()).id).toBe('qwen');
   });
@@ -30,7 +30,7 @@ describe('provider registry', () => {
       model: 'qwen3-coder-plus',
     });
     expect(claude).toMatchObject({
-      displayName: 'Claude (Anthropic)',
+      displayName: 'Claude (Anthropic API · consome créditos de API)',
       credentialSource: 'env',
       missing: [],
     });

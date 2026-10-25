@@ -17,6 +17,9 @@ const NAV = '↑↓ navegar · Enter selecionar · Esc fechar';
 const FIELD = 'Enter avançar · Esc voltar · Ctrl+U limpar';
 const CHOOSE = '↑↓ escolher · Enter confirmar · Esc voltar';
 
+/** Claude Code reuses the login steps but only checks its status (specs/010). */
+const cc = (flow: { method: { id: string } }) => flow.method.id === 'claude-code';
+
 /** Maps AuthFlowState → screens (contracts/dialog-flows.md). */
 export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
   switch (flow.step) {
@@ -162,17 +165,25 @@ export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
 
     case 'login.detect':
       return (
-        <DialogFrame title="Claude Auth Login" hints="" color={color}>
-          <ProgressView message="Procurando a CLI ant…" color={color} hint="" />
+        <DialogFrame title={flow.method.label} hints="" color={color}>
+          <ProgressView
+            message={cc(flow) ? 'Procurando o Claude Code…' : 'Procurando a CLI ant…'}
+            color={color}
+            hint=""
+          />
         </DialogFrame>
       );
 
     case 'login.missing':
       return (
-        <DialogFrame title="Claude Auth Login" hints={CHOOSE} color={color}>
+        <DialogFrame title={flow.method.label} hints={CHOOSE} color={color}>
           <ResultView
             kind="error"
-            title="A CLI 'ant' da Anthropic não foi encontrada."
+            title={
+              cc(flow)
+                ? 'O Claude Code não foi encontrado.'
+                : "A CLI 'ant' da Anthropic não foi encontrada."
+            }
             lines={flow.hints}
             actions={['Tentar novamente', 'Voltar']}
             selected={flow.selected}
@@ -183,9 +194,13 @@ export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
 
     case 'login.running':
       return (
-        <DialogFrame title="Claude Auth Login" hints="Esc cancelar" color={color}>
+        <DialogFrame title={flow.method.label} hints="Esc cancelar" color={color}>
           <ProgressView
-            message="Aguardando autorização no navegador…"
+            message={
+              cc(flow)
+                ? 'Verificando o login do Claude Code…'
+                : 'Aguardando autorização no navegador…'
+            }
             url={flow.url}
             color={color}
           />
@@ -194,10 +209,14 @@ export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
 
     case 'login.failed':
       return (
-        <DialogFrame title="Claude Auth Login" hints={CHOOSE} color={color}>
+        <DialogFrame title={flow.method.label} hints={CHOOSE} color={color}>
           <ResultView
             kind="error"
-            title={`Login não concluído: ${flow.reason}`}
+            title={
+              cc(flow)
+                ? `Claude Code indisponível: ${flow.reason}`
+                : `Login não concluído: ${flow.reason}`
+            }
             actions={['Tentar novamente', 'Voltar']}
             selected={flow.selected}
             color={color}

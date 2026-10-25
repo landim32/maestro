@@ -45,7 +45,11 @@ describe('loadSettings', () => {
     expect(loaded.settings.activeProvider).toBe('claude');
     expect(loaded.settings.providers.qwen.enabled).toBe(false);
     expect(loaded.settings.providers.qwen.apiKey).toBeUndefined();
-    expect(loaded.credentialSources).toEqual({ claude: 'none', qwen: 'none' });
+    expect(loaded.credentialSources).toEqual({
+      claude: 'none',
+      qwen: 'none',
+      'claude-code': 'none',
+    });
   });
 
   it('applies defaults for missing fields', () => {

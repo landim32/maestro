@@ -15,6 +15,8 @@ import { makeCtx, makeSettings } from '../../helpers/context.js';
 
 const CLAUDE = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'];
 const QWEN = ['qwen3-coder-plus', 'qwen3-coder-flash', 'qwen3-max'];
+/** Claude Code group (specs/010): listed after qwen, disabled until /auth enables it. */
+const CC = ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'];
 
 const bothSettings = { providers: { qwen: { enabled: true, apiKey: 'sk-q-1111' } } };
 const both: ModelFlowContext = {
@@ -37,14 +39,14 @@ const none: ModelFlowContext = {
 
 const run = (ctx: ModelFlowContext, s: ModelFlowState, ...events: ModelFlowEvent[]) =>
   events.reduce((st, e) => modelFlowReducer(st, e, ctx), s);
-const CUSTOM = 6; // 3 claude + 3 qwen models → custom entry index
+const CUSTOM = 9; // 3 claude + 3 qwen + 3 claude-code models → custom entry index
 
 describe('modelFlow — list (US2)', () => {
   it('lists one entry per model, grouped in PROVIDER_IDS order, active one selected', () => {
     const s = initialModelFlow(both);
     expect(s).toMatchObject({ step: 'list', selected: 0 });
     if (s.step === 'list') {
-      expect(s.items.map((i) => i.model)).toEqual([...CLAUDE, ...QWEN]);
+      expect(s.items.map((i) => i.model)).toEqual([...CLAUDE, ...QWEN, ...CC]);
       expect(s.items.map((i) => i.providerId)).toEqual([
         'claude',
         'claude',
@@ -52,8 +54,21 @@ describe('modelFlow — list (US2)', () => {
         'qwen',
         'qwen',
         'qwen',
+        'claude-code',
+        'claude-code',
+        'claude-code',
       ]);
-      expect(s.items.map((i) => i.active)).toEqual([true, false, false, false, false, false]);
+      expect(s.items.map((i) => i.active)).toEqual([
+        true,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+        false,
+      ]);
       expect(s.items[3]?.maskedKey).toBe('****1111');
       expect(s.items[0]?.credentialSource).toBe('profile');
     }
@@ -63,7 +78,7 @@ describe('modelFlow — list (US2)', () => {
     expect(initialModelFlow(ctx)).toMatchObject({ selected: 2 });
     const extra = { ...both, activeModel: 'claude-x' };
     const entries = buildModelEntries(extra);
-    expect(entries.map((e) => e.model)).toEqual([...CLAUDE, 'claude-x', ...QWEN]);
+    expect(entries.map((e) => e.model)).toEqual([...CLAUDE, 'claude-x', ...QWEN, ...CC]);
     expect(entries[3]).toMatchObject({ active: true, providerId: 'claude' });
     expect(initialModelFlow(extra)).toMatchObject({ selected: 3 });
   });
@@ -71,7 +86,7 @@ describe('modelFlow — list (US2)', () => {
     const s = initialModelFlow(onlyClaude);
     expect(run(onlyClaude, s, { type: 'down' })).toMatchObject({ selected: 1 });
     expect(run(onlyClaude, s, { type: 'down' }, { type: 'down' }, { type: 'down' })).toMatchObject({
-      selected: CUSTOM, // qwen rows (3..5) are skipped
+      selected: CUSTOM, // qwen and claude-code rows (3..8) are skipped
     });
     expect(
       run(onlyClaude, s, { type: 'down' }, { type: 'down' }, { type: 'down' }, { type: 'down' }),
@@ -121,6 +136,7 @@ describe('modelFlow — "Digitar outro modelo…" (US3)', () => {
       expect(s.providers.map((p) => [p.id, p.configured])).toEqual([
         ['claude', true],
         ['qwen', true],
+        ['claude-code', false],
       ]);
       expect(s.providers[1]?.maskedKey).toBe('****1111');
     }

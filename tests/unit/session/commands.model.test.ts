@@ -4,7 +4,6 @@ import { SessionController } from '../../../src/session/controller.js';
 import { Session } from '../../../src/session/session.js';
 import { makeCtx } from '../../helpers/context.js';
 import { textProvider } from '../../helpers/fakeProvider.js';
-import type { ProviderId } from '../../../src/providers/types.js';
 
 function make(
   opts: { qwenEnabled?: boolean; qwenKey?: string } = {
@@ -13,7 +12,7 @@ function make(
   },
 ) {
   const session = new Session({ cwd: '/w', activeProviderId: 'claude' });
-  const providers: Record<ProviderId, ReturnType<typeof textProvider>> = {
+  const providers: Record<'claude' | 'qwen', ReturnType<typeof textProvider>> = {
     claude: textProvider(['from claude', 'from claude 2'], { id: 'claude' }),
     qwen: textProvider(['from qwen'], { id: 'qwen' }),
   };
@@ -25,7 +24,7 @@ function make(
     ),
     tools: [],
     system: 'sys',
-    providerOverride: (id) => providers[id],
+    providerOverride: (id) => providers[id as 'claude' | 'qwen'],
   });
   return { session, ctl, providers };
 }
@@ -39,7 +38,11 @@ describe('/model', () => {
     expect(flow?.step).toBe('list');
     if (flow?.step === 'list') {
       // one row per catalogue model, grouped by provider (contracts/model-catalog.md § 2)
-      expect([...new Set(flow.items.map((i) => i.providerId))]).toEqual(['claude', 'qwen']);
+      expect([...new Set(flow.items.map((i) => i.providerId))]).toEqual([
+        'claude',
+        'qwen',
+        'claude-code',
+      ]);
       expect(flow.items[flow.selected]).toMatchObject({
         providerId: 'claude',
         model: 'claude-opus-5-5',

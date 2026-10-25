@@ -34,8 +34,18 @@ describe('authFlow — menu', () => {
     const m = menu();
     expect(m.step).toBe('menu');
     if (m.step === 'menu') {
-      expect(m.items.map((i) => i.method.id)).toEqual(['claude-api', 'claude-login', 'qwen']);
-      expect(m.items.map((i) => i.status)).toEqual(['active', 'not_configured', 'configured']);
+      expect(m.items.map((i) => i.method.id)).toEqual([
+        'claude-api',
+        'claude-login',
+        'qwen',
+        'claude-code',
+      ]);
+      expect(m.items.map((i) => i.status)).toEqual([
+        'active',
+        'not_configured',
+        'configured',
+        'not_configured',
+      ]);
       expect(m.selected).toBe(0);
     }
     const pre = initialAuthFlow(statuses, 'qwen');
@@ -43,8 +53,10 @@ describe('authFlow — menu', () => {
   });
   it('navigates circularly and closes on back/cancel', () => {
     const m = menu();
-    expect(run(m, { type: 'up' })).toMatchObject({ selected: 2 });
-    expect(run(m, { type: 'down' }, { type: 'down' }, { type: 'down' })).toMatchObject({
+    expect(run(m, { type: 'up' })).toMatchObject({ selected: 3 });
+    expect(
+      run(m, { type: 'down' }, { type: 'down' }, { type: 'down' }, { type: 'down' }),
+    ).toMatchObject({
       selected: 0,
     });
     expect(run(m, { type: 'back' }).step).toBe('closed');
@@ -223,7 +235,7 @@ describe('authFlow — testing / saving / activation', () => {
     );
     expect(back.step === 'menu' && back.items.length).toBe(0);
     const refreshed = refreshMenu(back, statuses);
-    expect(refreshed.step === 'menu' && refreshed.items.length).toBe(3);
+    expect(refreshed.step === 'menu' && refreshed.items.length).toBe(4);
   });
 });
 

@@ -36,6 +36,18 @@ export interface ProviderRequest {
   signal: AbortSignal;
   /** Per-turn adjustments from the route (specs/008); providers apply what they support. */
   overrides?: { effort?: Effort; maxTokens?: number };
+  /**
+   * Present for providers with `capabilities.executesTools` (specs/010): the provider runs its own
+   * tool loop and calls back here for every tool call; the turn applies validation, interception
+   * and the approval policy, and records the call and its result in the session history.
+   */
+  runTool?: (call: ToolCallRequest) => Promise<{ output: string; isError: boolean }>;
+}
+
+export interface ToolCallRequest {
+  callId: string;
+  name: string;
+  input: unknown;
 }
 
 export type StopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'cancelled';
@@ -68,7 +80,11 @@ export interface ModelProvider {
   status(): ProviderStatus;
   stream(req: ProviderRequest): AsyncIterable<ProviderEvent>;
   /** Optional features; absent → text only (image parts are dropped before the request). */
-  readonly capabilities?: { images?: boolean };
+  readonly capabilities?: {
+    images?: boolean;
+    /** The provider drives the tool loop itself through `ProviderRequest.runTool` (specs/010). */
+    executesTools?: boolean;
+  };
 }
 
 export interface ProviderContext {

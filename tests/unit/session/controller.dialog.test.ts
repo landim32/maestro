@@ -70,7 +70,7 @@ describe('SessionController dialogs', () => {
     expect(factory).toHaveBeenCalledTimes(1);
     ctl.applySettings({
       settings: makeSettings({ providers: { qwen: { enabled: true, apiKey: 'k-1111' } } }),
-      credentialSources: { claude: 'profile', qwen: 'config' },
+      credentialSources: { claude: 'profile', qwen: 'config', 'claude-code': 'none' },
     });
     expect(ctl.settings.providers.qwen.enabled).toBe(true);
     expect(ctl.statuses()[1]).toMatchObject({ configured: true, maskedKey: '****1111' });

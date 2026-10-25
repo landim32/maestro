@@ -15,7 +15,12 @@ const ANTHROPIC_URL = 'https://token-plan.maas.qwencloudapi.com/apps/anthropic';
 
 describe('connection methods catalogue (contracts/dialog-flows.md § 3)', () => {
   it('lists the three methods in order with the expected fields', () => {
-    expect(CONNECTION_METHODS.map((m) => m.id)).toEqual(['claude-api', 'claude-login', 'qwen']);
+    expect(CONNECTION_METHODS.map((m) => m.id)).toEqual([
+      'claude-api',
+      'claude-login',
+      'qwen',
+      'claude-code',
+    ]);
     expect(methodById('claude-api').fields.map((f) => f.key)).toEqual([
       'apiKey',
       'baseUrl',

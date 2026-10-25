@@ -7,6 +7,28 @@ import { MaestroError } from '../../../src/utils/errors.js';
 import { makeCtx, makeSettings } from '../../helpers/context.js';
 import { fakeAntCli } from '../../helpers/fakeAnt.js';
 import { textProvider } from '../../helpers/fakeProvider.js';
+import type { ClaudeCodeCli, ClaudeCodeStatus } from '../../../src/setup/claudeCodeCli.js';
+
+/** Claude Code CLI double: never starts a process; records what the driver asked for. */
+function fakeClaudeCodeCli(
+  location: string | undefined,
+  status: ClaudeCodeStatus | { error: string },
+): ClaudeCodeCli & { calls: string[]; setLocation(p: string | undefined): void } {
+  let loc = location;
+  const calls: string[] = [];
+  return {
+    calls,
+    setLocation: (p) => (loc = p),
+    locate: () => {
+      calls.push('locate');
+      return loc;
+    },
+    readStatus: async () => {
+      calls.push('readStatus');
+      return status;
+    },
+  };
+}
 
 /** Controller with in-memory settings "disk": writes patch a settings object, loader re-reads it. */
 function makeHarness(
@@ -15,10 +37,15 @@ function makeHarness(
     writeThrows?: boolean;
     env?: NodeJS.ProcessEnv;
     ant?: ReturnType<typeof fakeAntCli>;
+    claudeCode?: ClaudeCodeCli;
   } = {},
 ) {
   let stored = makeSettings({});
-  let credentials = { claude: 'env' as const, qwen: 'none' as const };
+  let credentials = {
+    claude: 'env' as const,
+    qwen: 'none' as const,
+    'claude-code': 'none' as const,
+  };
   const writes: SettingsPatchEntry[][] = [];
   const session = new Session({ cwd: '/w', activeProviderId: 'claude' });
   const test = opts.test ?? (async () => ({ ok: true as const, latencyMs: 1 }));
@@ -49,13 +76,15 @@ function makeHarness(
       credentials = {
         claude: credentials.claude,
         qwen: stored.providers.qwen.apiKey ? 'config' : 'none',
-      } as typeof credentials;
+        'claude-code': stored.providers['claude-code'].enabled ? 'cli' : 'none',
+      } as unknown as typeof credentials;
       return { path: '/mem/settings.json', overriddenByProject: [] };
     },
     settingsLoader: () => ({ settings: stored, credentialSources: credentials }),
     setupDeps: {
       testConnection: test,
       ant: opts.ant ?? fakeAntCli(),
+      claudeCode: opts.claudeCode ?? fakeClaudeCodeCli(undefined, { loggedIn: false }),
       env: opts.env ?? {},
       platform: 'win32',
     },
@@ -308,5 +337,66 @@ describe('SetupDriver — Claude Auth Login', () => {
     d.dispatch({ type: 'enter' });
     await tick();
     expect((flowOf(h.ctl) as { warnings: string[] }).warnings[0]).toMatch(/ANTHROPIC_API_KEY/);
+  });
+});
+
+describe('SetupDriver — Claude Code (specs/010 US3, FR-012)', () => {
+  it('missing CLI → install hints; found and logged in by subscription → enables the provider, offers activation', async () => {
+    const cc = fakeClaudeCodeCli(undefined, {
+      loggedIn: true,
+      authMethod: 'claude.ai',
+      maskedEmail: 'r***@example.com',
+    });
+    const h = makeHarness({ claudeCode: cc });
+    const d = h.ctl.setup;
+    d.openAuth('claude-code');
+    d.dispatch({ type: 'enter' });
+    expect(flowOf(h.ctl)).toMatchObject({ step: 'login.missing' });
+    expect((flowOf(h.ctl) as { hints: string[] }).hints.join('\n')).toContain('/login');
+
+    cc.setLocation('/home/u/.local/bin/claude');
+    d.dispatch({ type: 'enter' }); // tentar novamente
+    await tick();
+    expect(flowOf(h.ctl)).toMatchObject({ step: 'activate' });
+    const warnings = (flowOf(h.ctl) as { warnings: string[] }).warnings;
+    expect(warnings).toEqual(['Claude Code logado como r***@example.com (claude.ai).']);
+    expect(h.writes.at(-1)).toEqual([{ path: 'providers.claude-code.enabled', value: true }]);
+    expect(cc.calls).toEqual(['locate', 'locate', 'readStatus']);
+
+    d.dispatch({ type: 'enter' }); // ativar
+    await tick();
+    expect(h.ctl.session.activeProviderId).toBe('claude-code');
+  });
+
+  it('never starts a login: not logged in → failure with the Claude Code /login hint', async () => {
+    const cc = fakeClaudeCodeCli('/usr/bin/claude', { loggedIn: false });
+    const h = makeHarness({ claudeCode: cc });
+    const d = h.ctl.setup;
+    d.openAuth('claude-code');
+    d.dispatch({ type: 'enter' });
+    await tick();
+    expect(flowOf(h.ctl)).toMatchObject({ step: 'login.failed' });
+    expect((flowOf(h.ctl) as { reason: string }).reason).toContain('/login');
+    expect(h.writes).toEqual([]);
+    expect(cc.calls).toEqual(['locate', 'readStatus']);
+  });
+
+  it('a login that is not the subscription is accepted with a credits warning', async () => {
+    const cc = fakeClaudeCodeCli('/usr/bin/claude', { loggedIn: true, authMethod: 'api_key' });
+    const h = makeHarness({ claudeCode: cc });
+    h.ctl.setup.openAuth('claude-code');
+    h.ctl.setup.dispatch({ type: 'enter' });
+    await tick();
+    const warnings = (flowOf(h.ctl) as { warnings: string[] }).warnings;
+    expect(warnings[1]).toContain('créditos de API');
+  });
+
+  it('status errors are reported', async () => {
+    const cc = fakeClaudeCodeCli('/usr/bin/claude', { error: 'sem resposta' });
+    const h = makeHarness({ claudeCode: cc });
+    h.ctl.setup.openAuth('claude-code');
+    h.ctl.setup.dispatch({ type: 'enter' });
+    await tick();
+    expect(flowOf(h.ctl)).toMatchObject({ step: 'login.failed', reason: 'sem resposta' });
   });
 });

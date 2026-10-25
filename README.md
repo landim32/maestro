@@ -2,7 +2,7 @@
 
 Assistente de IA para o terminal com suporte a múltiplos modelos. Hoje é um chat de linha de comando no estilo do Claude Code e do qwen code, com ferramentas básicas de workspace. Amanhã será um orquestrador de agentes; a arquitetura de provedores plugáveis já foi desenhada para isso.
 
-- Provedores: **Claude** (Anthropic) e **Qwen** (Alibaba Cloud DashScope). Ative e configure cada um em `settings.json`.
+- Provedores: **Claude** pela API da Anthropic (consome créditos de API), **Claude Code** (usa o Claude Code instalado e logado com a sua assinatura do claude.ai) e **Qwen** (Alibaba Cloud DashScope). Ative e configure cada um em `settings.json` ou com `/auth`.
 - Sessão interativa com streaming, histórico de conversa, troca de provedor a quente (`/model`), cancelamento com Esc.
 - Ferramentas: ler arquivos, listar diretórios, escrever arquivos e executar comandos, sempre confinadas à pasta atual. Quatro modos de aprovação (Shift+Tab alterna) decidem o que pede sua confirmação; `ask_user` deixa o modelo fazer perguntas de múltipla escolha.
 - Modo não interativo (`maestro -p "..."`) para scripts.
@@ -24,9 +24,11 @@ npm link          # disponibiliza o comando `maestro`
 
 ## Credenciais
 
-**Pelo próprio Maestro.** Dentro da sessão, digite `/auth` (ou `/connect`, `/login`): um diálogo lista **Claude API** (chave), **Claude Auth Login** (login no navegador pela CLI `ant`) e **Qwen** (DashScope), pede os campos, testa a conexão e grava em `settings.json`. É o caminho recomendado; o resto desta seção descreve a configuração manual equivalente.
+**Pelo próprio Maestro.** Dentro da sessão, digite `/auth` (ou `/connect`, `/login`): um diálogo lista **Claude API** (chave), **Claude Auth Login** (login do console pela CLI `ant`), **Qwen** (DashScope) e **Claude Code** (assinatura), pede os campos, testa a conexão e grava em `settings.json`. É o caminho recomendado; o resto desta seção descreve a configuração manual equivalente.
 
-**Claude.** O Maestro reutiliza o que já existir na máquina, nesta ordem: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, ou um perfil criado por `ant auth login`. O login do próprio Claude Code **não** é lido pelo SDK. Faça uma vez:
+**API ou assinatura?** As opções **Claude API** e **Claude Auth Login** usam o provedor `claude`, que fala com a API da Anthropic: cada pedido é cobrado dos créditos de API da organização do console, mesmo com o login pelo `ant`. Quando os créditos acabam, o Maestro avisa ("o saldo de créditos de API desta conta acabou"). A assinatura Pro/Max do claude.ai não cobre a API; para usá-la, escolha **Claude Code** (abaixo).
+
+**Claude (API).** O Maestro reutiliza o que já existir na máquina, nesta ordem: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, ou um perfil criado por `ant auth login`. O login do próprio Claude Code **não** é lido pelo SDK. Faça uma vez:
 
 ```bash
 # Opção A — perfil OAuth (reutilizado pelo SDK e pelo Claude Code)
@@ -53,6 +55,18 @@ export DASHSCOPE_API_KEY=sk-...            # PowerShell: $env:DASHSCOPE_API_KEY 
 
 e em `~/.maestro/settings.json` coloque `"enabled": true` em `providers.qwen`; `protocol` aceita `"openai"` ou `"anthropic"` e `baseUrl` é opcional (sem ela vale o endpoint padrão do protocolo).
 
+**Claude Code (assinatura do claude.ai).** O provedor `claude-code` atende cada pedido executando o [Claude Code](https://code.claude.com/docs/en/setup) que você instalou e logou, no modo não interativo. Quem cuida do login é o próprio Claude Code: com o login da assinatura (`authMethod: claude.ai`), o uso entra na cota da sua assinatura e não consome créditos de API. O Maestro nunca lê, guarda, pede ou repassa credenciais do claude.ai, e não inicia login nenhum.
+
+1. Instale o Claude Code, rode `claude` num terminal e faça `/login` com a sua conta.
+2. No Maestro, `/auth` → **Claude Code**: o Maestro localiza o executável, consulta `claude auth status`, mostra como você está logado (e-mail mascarado), habilita o provedor e oferece ativá-lo.
+3. Use `/model claude-code`, ou aponte rotas para ele em `/routes` (por exemplo, `speckit.plan` no Claude Code e o resto no Qwen).
+
+Como funciona: o Claude Code roda sem nenhuma ferramenta própria, sem os seus servidores MCP, comandos e skills, e sem gravar a sessão. As ferramentas do Maestro (ler, listar, escrever, executar, `ask_user`) são oferecidas a ele por um servidor MCP local que só escuta em 127.0.0.1, numa porta aleatória, com um token aleatório por pedido. Cada chamada passa pelo mesmo caminho dos outros provedores: modos de aprovação, diálogo de confirmação com diff, confinamento à pasta e passos nativos do Spec Kit. As variáveis `ANTHROPIC_API_KEY` e `ANTHROPIC_AUTH_TOKEN` são removidas do ambiente do processo para que ele use o login da assinatura. O histórico da conversa, inclusive respostas de outros provedores, vai pela entrada padrão a cada pedido. `effort` vale; `maxTokens` não se aplica.
+
+`providers.claude-code` aceita `enabled`, `model`, `models`, `effort` e `command` (caminho do executável, se `claude` não estiver no PATH).
+
+> **Ressalva sobre os termos da Anthropic.** Os [termos do Claude Code](https://code.claude.com/docs/en/legal-and-compliance) proíbem aplicativos de terceiros de oferecer login do claude.ai e de coletar ou repassar credenciais da assinatura, e permitem que o usuário use o binário original do Claude Code com a própria assinatura. O provedor `claude-code` foi desenhado para ficar desse lado da linha: ele só executa o Claude Code que você instalou e logou. Os termos não tratam explicitamente de uma ferramenta que chama o Claude Code dessa forma; avalie se esse uso é adequado ao seu caso e, se precisar de certeza, consulte a Anthropic. Para uso garantidamente suportado dentro do Maestro, use o provedor `claude` com créditos de API.
+
 ## Configuração
 
 Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USERPROFILE%\.maestro\settings.json`) com comentários. Um `./.maestro/settings.json` na pasta do projeto sobrescreve o global, chave a chave. Precedência: argumentos > variáveis de ambiente > projeto > global.
@@ -74,6 +88,12 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
       "model": "qwen3-coder-plus",
       "models": ["qwen3-coder-plus", "qwen3-coder-flash", "qwen3-max"],
       "baseUrl": "https://token-plan.maas.qwencloudapi.com/compatible-mode/v1"
+    },
+    "claude-code": {
+      "enabled": false,
+      "model": "claude-opus-5-5",
+      "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+      "effort": "medium"
     }
   },
   "tools": {
@@ -104,6 +124,7 @@ Variáveis reconhecidas: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC
 ```bash
 maestro                              # sessão interativa
 maestro --provider qwen              # força um provedor nesta sessão
+maestro --provider claude-code       # usa o Claude Code logado (assinatura) nesta sessão
 maestro --model claude-sonnet-5-5    # força um modelo nesta sessão
 maestro -p "explique src/index.ts"   # uma pergunta, resposta em stdout, sai
 echo "resuma isto" | maestro -p -    # prompt via stdin
@@ -124,7 +145,7 @@ Na sessão:
 
 | Comando / tecla                          | Efeito                                                                                                                                      |
 | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/auth`, `/connect`, `/login`            | Abre o diálogo para conectar um provedor (Claude API, Claude Auth Login, Qwen)                                                              |
+| `/auth`, `/connect`, `/login`            | Abre o diálogo para conectar um provedor (Claude API, Claude Auth Login, Qwen, Claude Code)                                                 |
 | `/model`                                 | Abre o seletor com os modelos de cada provedor agrupados e o ativo marcado; "Digitar outro modelo…" pede o provedor e grava o nome na lista |
 | `/model qwen` / `/model claude qwen-max` | Troca provedor (e modelo) mantendo a conversa; um modelo novo entra na lista do provedor                                                    |
 | Shift+Tab                                | Avança o modo de aprovação (veja abaixo); vale só para a sessão                                                                             |
