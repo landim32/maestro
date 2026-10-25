@@ -1,29 +1,76 @@
 import { useRef, useState } from 'react';
-import { Box, Text, useInput } from 'ink';
+import { Box, Text, useInput, usePaste } from 'ink';
+import { DEFAULTS } from '../../config/defaults.js';
 import { EDITING, historyNavigate } from '../../session/history.js';
 import type { HistoryCursor } from '../../session/history.js';
+import type { PromptSubmission } from '../../session/controller.js';
 import { visualWidth } from '../../utils/width.js';
+import {
+  classifyPath,
+  readAttachment,
+  readImageBase64,
+  rejectionMessage,
+  resolvePastedPath,
+  splitPastedPaths,
+} from '../attachments.js';
+import type { AttachLimits } from '../attachments.js';
+import {
+  ChipRegistry,
+  chipChar,
+  chipIdOf,
+  chipLabel,
+  countLines,
+  expandChips,
+  formatBytes,
+  labelChips,
+  relinkChips,
+  sanitizePaste,
+} from '../chips.js';
+import type { Chip } from '../chips.js';
 import { isScrollKey } from '../hooks/useKeyboard.js';
 import { isMouseSequence } from '../hooks/useMouseWheel.js';
+import { ChipPanel } from './ChipPanel.js';
 
 export const MAX_INPUT_LINES = 10;
 
 type Command = { name: string; usage?: string; description: string };
+
+export interface PasteLimits extends AttachLimits {
+  pasteCollapseLines: number;
+}
+
+export const DEFAULT_PASTE_LIMITS: PasteLimits = { ...DEFAULTS.ui };
 
 export interface InputPromptProps {
   active: boolean;
   placeholder?: string;
   /** Persistent input history for ↑/↓ navigation (oldest first) — contracts/history.md § 3. */
   historyItems: readonly string[];
-  onSubmit: (text: string) => void;
+  onSubmit: (submission: PromptSubmission) => void;
   /** Available columns for the whole prompt box. */
   columns: number;
   color: boolean;
   /** Slash commands for the suggestion list shown while typing `/…` (↑/↓ select, Enter/Tab/→ accept). */
   commands?: ReadonlyArray<Command>;
+  /** Session chip registry (specs/007); a private one is used when absent (unit tests). */
+  chips?: ChipRegistry;
+  limits?: PasteLimits;
+  /** Working directory for pasted file paths; absent → paths are never detected. */
+  cwd?: string;
+  /** The active provider accepts image attachments. */
+  imagesOk?: boolean;
+  providerId?: string;
+  env?: NodeJS.ProcessEnv;
+  /** Attachment warnings (refused files, limits) go to the transcript. */
+  onNotice?: (text: string, level: 'info' | 'warn') => void;
 }
 
 export const MAX_SUGGESTIONS = 6;
+
+/** Submission for plain text without markers. */
+export function plainSubmission(text: string): PromptSubmission {
+  return { display: text, text, parts: [], warnings: [] };
+}
 
 /** Commands whose name starts with the typed prefix (only while the text is a bare `/word`). */
 export function suggestionsFor(value: string, commands: ReadonlyArray<Command>): Command[] {
@@ -51,9 +98,14 @@ export interface InputLine {
 /**
  * Wraps the text (as code points) into visual lines of at most `width` cells, breaking at the
  * last space when possible. Offsets are kept so the cursor can be placed on the right line.
- * A separator consumed by the break (space or `\n`) belongs to no line.
+ * A separator consumed by the break (space or `\n`) belongs to no line. `widthOf` lets a chip
+ * code point take the width of its label.
  */
-export function layoutInput(chars: readonly string[], width: number): InputLine[] {
+export function layoutInput(
+  chars: readonly string[],
+  width: number,
+  widthOf: (ch: string) => number = visualWidth,
+): InputLine[] {
   const lines: InputLine[] = [];
   const w = Math.max(1, width);
   let start = 0;
@@ -70,7 +122,7 @@ export function layoutInput(chars: readonly string[], width: number): InputLine[
       i++;
       continue;
     }
-    const cw = visualWidth(ch);
+    const cw = widthOf(ch);
     if (lineW + cw > w && i > start) {
       if (ch === ' ') {
         lines.push({ start, end: i });
@@ -119,6 +171,79 @@ function wordRight(chars: readonly string[], pos: number): number {
   return p;
 }
 
+/** Chip under the cursor, or just before it (Ctrl+O target). */
+export function chipAtCursor(
+  chars: readonly string[],
+  pos: number,
+  reg: ChipRegistry,
+): Chip | undefined {
+  for (const i of [pos, pos - 1]) {
+    const ch = chars[i];
+    if (ch === undefined) continue;
+    const id = chipIdOf(ch);
+    if (id !== undefined) return reg.get(id);
+  }
+  return undefined;
+}
+
+/** Text of one visual line with chip labels drawn in the accent colour and the cursor inverted. */
+function LineText({
+  chars,
+  start,
+  end,
+  cursor,
+  reg,
+  accent,
+}: {
+  chars: readonly string[];
+  start: number;
+  end: number;
+  /** Code-point offset of the cursor, or -1 when this line has no cursor. */
+  cursor: number;
+  reg: ChipRegistry;
+  accent: string | undefined;
+}) {
+  const nodes: React.ReactNode[] = [];
+  let run = '';
+  const flush = (key: string) => {
+    if (run !== '') nodes.push(<Text key={key}>{run}</Text>);
+    run = '';
+  };
+  for (let i = start; i < end; i++) {
+    const ch = chars[i]!;
+    const id = chipIdOf(ch);
+    const chip = id === undefined ? undefined : reg.get(id);
+    if (chip) {
+      flush(`t${i}`);
+      nodes.push(
+        <Text key={`c${i}`} color={accent} inverse={i === cursor} bold>
+          {chipLabel(chip)}
+        </Text>,
+      );
+      continue;
+    }
+    if (i === cursor) {
+      flush(`t${i}`);
+      nodes.push(
+        <Text key={`k${i}`} inverse>
+          {ch}
+        </Text>,
+      );
+      continue;
+    }
+    run += id === undefined ? ch : '�';
+  }
+  flush('tail');
+  if (cursor >= end) {
+    nodes.push(
+      <Text key="cursor" color={accent}>
+        ▌
+      </Text>,
+    );
+  }
+  return <Text>{nodes}</Text>;
+}
+
 export function InputPrompt({
   active,
   placeholder,
@@ -127,16 +252,27 @@ export function InputPrompt({
   columns,
   color,
   commands = [],
+  chips,
+  limits = DEFAULT_PASTE_LIMITS,
+  cwd,
+  imagesOk = false,
+  providerId,
+  env,
+  onNotice,
 }: InputPromptProps) {
   const [value, setValueState] = useState('');
   const [cursor, setCursorState] = useState(0);
   const [selected, setSelectedState] = useState(0);
+  /** Chip whose content is shown under the prompt (Ctrl+O). */
+  const [expandedChip, setExpandedChip] = useState<number | undefined>(undefined);
   // Refs mirror the state so that several keys delivered in one tick (key repeat, paste)
   // each see the result of the previous one instead of a stale closure.
   const valueRef = useRef('');
   const cursorPosRef = useRef(0); // code-point offset of the edit cursor
   const selectedRef = useRef(0); // highlighted suggestion
   const cursorRef = useRef<HistoryCursor>(EDITING);
+  const ownChips = useRef<ChipRegistry | null>(null);
+  const reg = chips ?? (ownChips.current ??= new ChipRegistry());
 
   const setCursor = (p: number) => {
     cursorPosRef.current = p;
@@ -160,6 +296,112 @@ export function InputPrompt({
     setValue(chars.join(''), pos);
     leaveHistory();
   };
+  const insert = (text: string) => {
+    const chars = Array.from(valueRef.current);
+    const pos = Math.min(cursorPosRef.current, chars.length);
+    const ins = Array.from(text);
+    chars.splice(pos, 0, ...ins);
+    edit(chars, pos + ins.length);
+  };
+
+  /** Pasted text: file paths → chips/warnings; long text → one chip; otherwise literal. */
+  const handlePaste = (raw: string) => {
+    const text = sanitizePaste(raw);
+    if (text === '') return;
+    const lines = countLines(text);
+    if (cwd) {
+      const tokens = splitPastedPaths(text);
+      const resolved = tokens.map((t) => ({ t, abs: resolvePastedPath(t, cwd, env) }));
+      const paths = resolved.filter((r) => r.abs).length;
+      // Paths are detected in short pastes, or when every token is a path (a dropped file list);
+      // a long paste with an incidental file name stays a text paste.
+      if (paths > 0 && (lines <= limits.pasteCollapseLines || paths === tokens.length)) {
+        const pieces: string[] = [];
+        for (const r of resolved) {
+          if (!r.abs) {
+            pieces.push(r.t);
+            continue;
+          }
+          const c = classifyPath(r.abs, cwd, limits, imagesOk);
+          if (c.kind === 'rejected') {
+            onNotice?.(rejectionMessage(c, limits, providerId), 'warn');
+            pieces.push(r.t);
+            continue;
+          }
+          const chip =
+            c.kind === 'text'
+              ? reg.add({
+                  kind: 'file',
+                  path: c.abs,
+                  rel: c.rel,
+                  name: c.name,
+                  bytes: c.bytes,
+                  lines: c.lines,
+                })
+              : reg.add({
+                  kind: 'image',
+                  path: c.abs,
+                  rel: c.rel,
+                  name: c.name,
+                  bytes: c.bytes,
+                  mediaType: c.mediaType,
+                });
+          pieces.push(chipChar(chip.id));
+        }
+        insert(pieces.join(' '));
+        return;
+      }
+    }
+    if (lines > limits.pasteCollapseLines) {
+      const chip = reg.add({ kind: 'paste', text, lines });
+      insert(chipChar(chip.id));
+      return;
+    }
+    insert(text.replace(/\t/g, '  '));
+  };
+  usePaste(handlePaste, { isActive: active });
+
+  /** Expands the markers, reads attachments and hands the message over (contracts/paste-chips.md § 3). */
+  const submitText = (text: string) => {
+    const warnings: string[] = [];
+    const parts: PromptSubmission['parts'] = [];
+    const sent: NonNullable<PromptSubmission['sent']> = [];
+    let total = 0;
+    const expanded = expandChips(text, reg, (chip) => {
+      if (chip.kind === 'paste') {
+        total += Buffer.byteLength(chip.text, 'utf8');
+        sent.push({ kind: 'paste', lines: chip.lines });
+        return { text: chip.text, lines: chip.lines };
+      }
+      if (chip.kind === 'file') {
+        const c = readAttachment(chip.path);
+        if (!c) {
+          warnings.push(`${chip.rel} não existe mais; enviado como ausente.`);
+          return undefined;
+        }
+        total += Buffer.byteLength(c.text, 'utf8');
+        sent.push({ kind: 'file', lines: c.lines, bytes: Buffer.byteLength(c.text, 'utf8') });
+        return c;
+      }
+      const data = readImageBase64(chip.path);
+      if (!data) warnings.push(`${chip.rel} não existe mais; a imagem não foi enviada.`);
+      else {
+        parts.push({ type: 'image', mediaType: chip.mediaType, data, name: chip.name });
+        total += chip.bytes;
+        sent.push({ kind: 'image', bytes: chip.bytes });
+      }
+      return undefined;
+    });
+    if (total > limits.attachMaxTotalBytes) {
+      onNotice?.(
+        `Conteúdo anexado (${formatBytes(total)}) acima do limite (${formatBytes(limits.attachMaxTotalBytes)}); remova um marcador ou aumente ui.attachMaxTotalBytes`,
+        'warn',
+      );
+      return false;
+    }
+    onSubmit({ display: labelChips(text, reg), text: expanded, parts, warnings, sent });
+    return true;
+  };
 
   useInput(
     (input, key) => {
@@ -169,6 +411,8 @@ export function InputPrompt({
       const suggestions = suggestionsFor(valueRef.current, commands);
       const browsingHistory = cursorRef.current !== EDITING;
       const current = suggestions[Math.min(selectedRef.current, suggestions.length - 1)];
+      const ctrlO = key.ctrl && input === 'o';
+      if (!ctrlO && expandedChip !== undefined) setExpandedChip(undefined); // any other key closes the panel
 
       if (key.return) {
         if (current && !browsingHistory) {
@@ -181,13 +425,19 @@ export function InputPrompt({
           }
           setValue('');
           leaveHistory();
-          onSubmit(completion.trimEnd()); // never submit the trailing argument space (`/model ` → `/model`)
+          onSubmit(plainSubmission(completion.trimEnd())); // never submit the trailing argument space
           return;
         }
         const text = valueRef.current;
-        setValue('');
-        leaveHistory();
-        if (text.trim() !== '') onSubmit(text);
+        if (text.trim() === '') {
+          setValue('');
+          leaveHistory();
+          return;
+        }
+        if (submitText(text)) {
+          setValue('');
+          leaveHistory();
+        }
         return;
       }
       if (key.backspace) {
@@ -232,7 +482,13 @@ export function InputPrompt({
           valueRef.current,
         );
         cursorRef.current = r.cursor;
-        if (r.value !== valueRef.current) setValue(r.value);
+        // labels of this session's markers become markers again (contracts/paste-chips.md § 4)
+        if (r.value !== valueRef.current) setValue(relinkChips(r.value, reg));
+        return;
+      }
+      if (ctrlO) {
+        const chip = chipAtCursor(chars, pos, reg);
+        setExpandedChip(chip && expandedChip !== chip.id ? chip.id : undefined);
         return;
       }
       if (key.ctrl) {
@@ -257,7 +513,8 @@ export function InputPrompt({
         return;
       }
       if (key.meta || key.escape) return;
-      const text = Array.from(input.replace(/\t/g, '').replace(/\r\n?/g, '\n'));
+      // typed text never contains chip code points (sanitized like a paste)
+      const text = Array.from(sanitizePaste(input.replace(/\t/g, '')));
       if (text.length > 0) {
         chars.splice(pos, 0, ...text);
         edit(chars, pos + text.length);
@@ -270,7 +527,12 @@ export function InputPrompt({
   const textWidth = Math.max(8, columns - 7);
   const chars = Array.from(value);
   const pos = Math.min(cursor, chars.length);
-  const lines = layoutInput(chars, textWidth);
+  const widthOf = (ch: string) => {
+    const id = chipIdOf(ch);
+    const chip = id === undefined ? undefined : reg.get(id);
+    return chip ? visualWidth(chipLabel(chip)) : visualWidth(ch);
+  };
+  const lines = layoutInput(chars, textWidth, widthOf);
   const curLine = cursorLine(lines, pos);
   let first = Math.max(0, lines.length - MAX_INPUT_LINES);
   if (curLine < first) first = curLine;
@@ -280,6 +542,7 @@ export function InputPrompt({
   const suggestions = active ? suggestionsFor(value, commands) : [];
   const sel = Math.min(selected, suggestions.length - 1);
   const accent = color ? 'cyan' : undefined;
+  const panelChip = active && expandedChip !== undefined ? reg.get(expandedChip) : undefined;
 
   return (
     <Box
@@ -293,8 +556,6 @@ export function InputPrompt({
       {visible.map((line, i) => {
         const lineIdx = first + i;
         const hasCursor = active && lineIdx === curLine;
-        const text = chars.slice(line.start, line.end).join('');
-        const col = pos - line.start;
         return (
           <Box key={lineIdx}>
             <Text color={accent} bold>
@@ -307,17 +568,15 @@ export function InputPrompt({
                   {placeholder ?? (active ? 'Type a message or /help' : 'waiting…')}
                 </Text>
               </>
-            ) : hasCursor && col < line.end - line.start ? (
-              <Text>
-                {chars.slice(line.start, pos).join('')}
-                <Text inverse>{chars[pos]}</Text>
-                {chars.slice(pos + 1, line.end).join('')}
-              </Text>
             ) : (
-              <>
-                <Text>{text}</Text>
-                {hasCursor && <Text color={accent}>▌</Text>}
-              </>
+              <LineText
+                chars={chars}
+                start={line.start}
+                end={line.end}
+                cursor={hasCursor ? pos : -1}
+                reg={reg}
+                accent={accent}
+              />
             )}
           </Box>
         );
@@ -338,6 +597,7 @@ export function InputPrompt({
           </Box>
         );
       })}
+      {panelChip && <ChipPanel chip={panelChip} width={textWidth} color={color} />}
     </Box>
   );
 }

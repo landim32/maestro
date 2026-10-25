@@ -4,6 +4,7 @@ import type { Settings } from '../config/schema.js';
 import type { SessionController } from '../session/controller.js';
 import { isInteractive } from '../utils/tty.js';
 import { App } from '../ui/App.js';
+import { FrameRecorder } from '../ui/frameRecorder.js';
 import { computeCapabilities } from '../ui/hooks/useTerminalCapabilities.js';
 import { EXIT } from './exitCodes.js';
 
@@ -43,6 +44,8 @@ export async function runInteractive({
     env: env ?? process.env,
   });
 
+  // The recorder passes every write through and keeps the last frame for mouse selection (specs/007).
+  const frame = new FrameRecorder(out);
   const instance = render(
     createElement(App, {
       controller,
@@ -50,12 +53,13 @@ export async function runInteractive({
       ui: settings.ui,
       flags,
       env: env ?? process.env,
+      frame,
     }),
     {
       exitOnCtrlC: false,
       patchConsole: true,
       alternateScreen: caps.altScreen,
-      ...(stdout ? { stdout } : {}),
+      stdout: frame.stream,
       ...(stdin ? { stdin } : {}),
     },
   );

@@ -4,6 +4,7 @@ import type { ControllerOptions } from '../../src/session/controller.js';
 import { Session } from '../../src/session/session.js';
 import type { ModelProvider, ProviderEvent, ProviderId } from '../../src/providers/types.js';
 import type { SettingsInput } from '../../src/config/schema.js';
+import type { CopyResult } from '../../src/utils/clipboard.js';
 import { makeCtx } from './context.js';
 import { createFakeProvider, textProvider } from './fakeProvider.js';
 import type { FakeProvider } from './fakeProvider.js';
@@ -21,6 +22,10 @@ export interface HarnessOptions extends RenderSizedOptions {
   settings?: SettingsInput;
   credentials?: Parameters<typeof makeCtx>[1];
   controller?: Partial<ControllerOptions>;
+  /** Injected clipboard for mouse-selection tests (specs/007). */
+  copy?: (text: string) => Promise<CopyResult>;
+  /** Working directory of the session (file attachments resolve against it). */
+  cwd?: string;
 }
 
 /** Renders the real App with fake providers in a sized fake terminal. */
@@ -30,7 +35,7 @@ export function mountApp(opts: HarnessOptions = {}) {
     (opts.events
       ? createFakeProvider(opts.events)
       : textProvider(['Hello from fake', 'Second answer']));
-  const session = new Session({ cwd: 'C:\\work\\demo', activeProviderId: 'claude' });
+  const session = new Session({ cwd: opts.cwd ?? 'C:\\work\\demo', activeProviderId: 'claude' });
   const ctx = makeCtx(opts.settings ?? {}, { ...opts.credentials, env: opts.env ?? {} });
   const controller = new SessionController({
     session,
@@ -44,12 +49,16 @@ export function mountApp(opts: HarnessOptions = {}) {
   let exited = 0;
   controller.on('exit', () => exited++);
   const ui = renderSized(
-    <App
-      controller={controller}
-      onExit={() => controller.requestExit()}
-      ui={opts.ui ?? { altScreen: true, mouse: true }}
-      env={opts.env ?? {}}
-    />,
+    (frame) => (
+      <App
+        controller={controller}
+        onExit={() => controller.requestExit()}
+        ui={opts.ui ?? { altScreen: true, mouse: true }}
+        env={opts.env ?? {}}
+        copy={opts.copy}
+        frame={frame}
+      />
+    ),
     opts,
   );
   return { ...ui, controller, session, provider, exits: () => exited };
@@ -101,4 +110,11 @@ export const KEYS = {
   left: '\x1b[D',
   wheelUp: '\x1b[<64;1;1M',
   wheelDown: '\x1b[<65;1;1M',
+  ctrlO: '\x0f',
+  backspace: '\x7f',
+  /** Bracketed paste (Ink's usePaste delivers it in one piece). */
+  paste: (text: string) => `\x1b[200~${text}\x1b[201~`,
+  /** SGR mouse report: button 0 press/release, 32 drag, 64/65 wheel; x/y are 1-based cells. */
+  mouse: (button: number, x: number, y: number, release = false) =>
+    `\x1b[<${button};${x};${y}${release ? 'm' : 'M'}`,
 };

@@ -61,6 +61,36 @@ describe('contract: history and tool conversion per provider', () => {
   it('OpenAI-compatible tools (all tools incl. ask_user)', () => {
     expect(toOpenAITools(allTools())).toMatchSnapshot();
   });
+  it('a user image part becomes a base64 block before the text for Claude and is dropped for Qwen (specs/007)', () => {
+    const withImage: Message[] = [
+      {
+        id: 'u2',
+        role: 'user',
+        content: [
+          { type: 'text', text: 'O que há na imagem? [Imagem: x.png]' },
+          { type: 'image', mediaType: 'image/png', data: 'iVBORw0KGgo=', name: 'x.png' },
+        ],
+        createdAt: at,
+      },
+    ];
+    expect(toAnthropicMessages(withImage)).toEqual([
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: 'image/png', data: 'iVBORw0KGgo=' },
+          },
+          { type: 'text', text: 'O que há na imagem? [Imagem: x.png]' },
+        ],
+      },
+    ]);
+    expect(toOpenAIMessages('S', withImage)).toEqual([
+      { role: 'system', content: 'S' },
+      { role: 'user', content: 'O que há na imagem? [Imagem: x.png]' },
+    ]);
+  });
+
   it('both conversions keep tool call ids aligned with their results', () => {
     const a = toAnthropicMessages(history);
     const toolUses = (a[1]!.content as Array<{ type: string; id?: string }>)

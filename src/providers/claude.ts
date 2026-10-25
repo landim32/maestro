@@ -34,6 +34,7 @@ export function createClaudeProvider(ctx: ProviderContext): ModelProvider {
   return {
     id: 'claude',
     displayName: DISPLAY_NAMES.claude,
+    capabilities: { images: true },
     status: () => describeProvider('claude', ctx),
     stream(req: ProviderRequest): AsyncIterable<ProviderEvent> {
       return streamAnthropicProtocol({

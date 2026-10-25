@@ -4,6 +4,9 @@ Auto-generated from all feature plans. Last updated: 2026-10-25
 
 ## Active Technologies
 
+- TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`usePaste`, `useBoxMetrics` com `left/top`, `useInput`), `node:child_process` (`execFile` para clip/pbcopy/xclip/wl-copy/xsel), `node:fs` (anexos), `zod` (limites). Nenhuma nova. (007-paste-copy-console)
+- `settings.json` ganha `ui.pasteCollapseLines`, `ui.attachMaxBytes`, `ui.attachMaxTotalBytes`, `ui.imageMaxBytes`; `history.jsonl` continua texto (rótulos); nada mais persistido. (007-paste-copy-console)
+
 - TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `node:fs`, `node:child_process` (`execFileSync('git', …)` para branches), `node:crypto` (sha256 do manifesto), `zod` (chave `speckit`), `ink` (sugestões no prompt). Parser YAML mínimo próprio para frontmatter e manifestos. Nenhuma nova. (006-native-spec-kit)
 - novos `assets/speckit/` no pacote (templates, comandos e scripts v1.2.3 + NOTICE); por projeto, `.specify/` (templates, scripts, `memory/`, `feature.json`, `init-options.json`, `integration.json`, `integrations/maestro.manifest.json`), `.maestro/commands/`, `MAESTRO.md`; `settings.json` ganha `speckit.createBranch`. (006-native-spec-kit)
 
@@ -35,15 +38,15 @@ src/
 ├── providers/          # types.ts (ModelProvider, ProviderEvent), status.ts, registry.ts, anthropicProtocol.ts (shared Messages-API streaming), claude.ts, qwen.ts (protocol: openai | anthropic), index.ts
 ├── session/            # session.ts (state machine incl. awaiting_answer), turn.ts (stream + tool loop + approval policy), commands.ts (/help /auth /model /approval-mode /clear /exit), controller.ts, systemPrompt.ts, history.ts
 ├── tools/              # types.ts (kind, ToolContext.ask), approval.ts (modes, destructive patterns) [qwen-code attrib], askUser.ts [attrib], sandbox.ts, readFile.ts, listDirectory.ts, writeFile.ts, runCommand.ts, registry.ts
-├── ui/                 # App.tsx (fixed-height layout), banner.ts, components/{Header,Transcript,ScrollIndicator,Banner,MessageList,InputPrompt,StatusBar [attrib],ConfirmationDialog}.tsx
+├── ui/                 # App.tsx (fixed-height layout), banner.ts, chips.ts, attachments.ts, selection.ts, frameRecorder.ts (specs/007), components/{Header,Transcript,ScrollIndicator,Banner,MessageList,InputPrompt,ChipPanel,StatusBar [attrib],ConfirmationDialog}.tsx
 │   ├── markdown/       # parse.ts (remark+gfm), Markdown.tsx, Inline.tsx, CodeBlock.tsx, Table.tsx, highlight.ts (lowlight), theme.ts
 │   ├── dialogs/        # DialogHost, DialogFrame, SelectList, TextField (secret), ProgressView, ResultView, AuthDialog, ModelDialog, AskUserDialog [attrib]
-│   └── hooks/          # useSession, useKeyboard (+scroll keys, Shift+Tab mode cycle, dialog/question routing), useViewport (reducer), useMouseWheel (SGR), useTerminalCapabilities
+│   └── hooks/          # useSession, useKeyboard (+scroll keys, Shift+Tab mode cycle, dialog/question routing), useViewport (reducer), useMouseWheel (SGR), useMouseSelection (press/drag/release → copy), useTerminalCapabilities
 ├── setup/              # methods.ts (catalogue), authFlow.ts + modelFlow.ts + askUserFlow.ts [attrib] (pure reducers), driver.ts (effects), connectionTest.ts, antCli.ts, installHints.ts, dialog.ts
 ├── speckit/            # native Spec Kit host: discovery.ts, prompt.ts + preamble.ts, invocation.ts (script dialects), feature.ts, naming.ts, numbering.ts, templates.ts (layers), git.ts, steps/* (native steps), init.ts (+manifest), status.ts, service.ts
 assets/speckit/         # bundled spec-kit v1.2.3 (MIT): VERSION, NOTICE, templates/, templates/commands/, scripts/{bash,powershell,python}
 ├── config/writer.ts    # patch-by-path, validated, atomic settings.json writes
-└── utils/              # mask.ts, errors.ts (MaestroError), tty.ts, logger.ts
+└── utils/              # mask.ts, errors.ts (MaestroError), tty.ts, logger.ts, clipboard.ts (clip/pbcopy/wl-copy/xclip/xsel → OSC 52)
 tests/
 ├── unit/ integration/ contract/ helpers/   # unit/license/attribution.test.ts guards headers + THIRD_PARTY_NOTICES.md
 specs/00N-*/                # spec, plan, research, data-model, contracts, quickstart, tasks per feature
@@ -69,7 +72,8 @@ THIRD_PARTY_NOTICES.md      # qwen-code / gemini-cli notices + Apache-2.0 text (
 - Claude requests: do not send `thinking` (adaptive by default on Opus 5.5); `fallbacks: "default"` requires `client.beta.messages` + beta `server-side-fallback-2026-07-01`.
 - Prettier: single quotes, semicolons, width 100.
 - UI layout: the root Box is `height={rows}`; every fixed region (Header, InputPrompt, StatusBar, dialogs) needs `flexShrink={0}` and scroll containers need `minHeight={0}` — Yoga's default min-height:auto otherwise refuses to shrink and pushes rows off-screen.
-- The UI never writes escape sequences itself; only `useMouseWheel` (SGR mouse tracking) and Ink (`alternateScreen`) do. Assistant text is rendered through `ui/markdown/`; user and tool text stays literal; `-p` output stays raw markdown.
+- The UI never writes escape sequences itself; only `useMouseWheel` (SGR mouse tracking), `utils/clipboard.ts` (OSC 52 fallback, specs/007) and Ink (`alternateScreen`, bracketed paste) do. Assistant text is rendered through `ui/markdown/`; user and tool text stays literal; `-p` output stays raw markdown.
+- Paste & copy (specs/007): a paste/file/image marker is ONE private-use code point (U+E000 + id) in the prompt's `string[]`, resolved through the session's `ChipRegistry` (`controller.chips`; `src/ui/chips.ts`: `chipChar`, `chipLabel`, `labelChips`, `relinkChips`, `expandChips`). Labels are never editable text; pasted PUA characters are sanitized. Enter builds a `PromptSubmission` (`display` with labels for the transcript/history, `text` expanded with `<pasted-text>`/`<file>` blocks for the model, `parts` for images); `controller.submit` accepts a string or a submission, and slash commands see the expanded text. Pasted/attached content never reaches `history.jsonl` or the debug log (`paste.chip` logs kind and size only; `noSecrets` test). Paths are detected with `src/ui/attachments.ts` (existing files only; binary/size/outside rejections are notices). Mouse selection is the pure reducer `src/ui/selection.ts` in content coordinates driven by `useMouseSelection`; the copied text comes from the `FrameRecorder` (`src/ui/frameRecorder.ts`), a transparent Proxy over the stdout handed to Ink (`interactive.ts` and `renderSized`), cached per content line; the highlight is an absolute overlay in `Transcript`. `/mouse` toggles `controller.mouseEnabled` (session only; initial `ui.mouse`). Image parts require `ModelProvider.capabilities.images` (Claude only); the controller drops them with a warning otherwise.
 - UI tests use `tests/helpers/renderSized.ts` (sized fake TTY) and `waitFor`/`waitForFrame` instead of fixed sleeps: measurement → dispatch → re-render takes a few frames. Write a tick between typing and Enter (prompt state must update first).
 - Dialog flows (`/auth`, `/model`) are pure reducers in `src/setup/`; side effects (connection test, settings writes, the `ant` process) live only in `SetupDriver` and are injectable (`setupDeps`, `settingsWriter`, `settingsLoader`). Keys enter only through `TextField secret`; logs record setting paths, never values.
 - Input history lives in `src/session/history.ts` (`InputHistory` + injectable `HistoryStore`; pure `historyNavigate` for ↑/↓). The controller records every interactive submit before executing it; dialog `TextField` input and `-p` never reach the history (`noSecrets` test enforces it). `InputPrompt` keeps refs beside state so keys batched in one tick see each other's result.
@@ -81,11 +85,11 @@ THIRD_PARTY_NOTICES.md      # qwen-code / gemini-cli notices + Apache-2.0 text (
 
 ## Recent Changes
 
+- 007-paste-copy-console: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`usePaste`, `useBoxMetrics` com `left/top`, `useInput`), `node:child_process` (`execFile` para clip/pbcopy/xclip/wl-copy/xsel), `node:fs` (anexos), `zod` (limites). Nenhuma nova.
+
 - 006-native-spec-kit: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `node:fs`, `node:child_process` (`execFileSync('git', …)` para branches), `node:crypto` (sha256 do manifesto), `zod` (chave `speckit`), `ink` (sugestões no prompt). Parser YAML mínimo próprio para frontmatter e manifestos. Nenhuma nova.
 
 - 005-approval-modes-ask-user: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput` com `key.tab`/`key.shift`), `zod` 4 (`z.strictObject` + `z.toJSONSchema` para o esquema de `ask_user`), `yargs` (novos argumentos). Nenhuma nova.
-
-- 004-history-model-catalog: Added TypeScript 5.9, Node.js ≥ 22 (ESM), mesmo stack. + existentes — `ink` 8 (`useInput`), `zod` 4 (esquema de `models`), `node:fs` (append/rename). Nenhuma nova.
 
 <!-- MANUAL ADDITIONS START -->
 

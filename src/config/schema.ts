@@ -90,6 +90,14 @@ export const uiSettingsSchema = z.strictObject({
   altScreen: z.boolean().default(true),
   /** Enable mouse-wheel scrolling (SGR mouse tracking) when stdout is a TTY. */
   mouse: z.boolean().default(true),
+  /** A paste with more lines than this becomes a `[Pasted text #N +L lines]` marker (specs/007). */
+  pasteCollapseLines: z.number().int().min(1).default(DEFAULTS.ui.pasteCollapseLines),
+  /** Largest text file accepted as an attachment (bytes). */
+  attachMaxBytes: z.number().int().min(1024).default(DEFAULTS.ui.attachMaxBytes),
+  /** Largest total of expanded attachments in one message (bytes). */
+  attachMaxTotalBytes: z.number().int().min(1024).default(DEFAULTS.ui.attachMaxTotalBytes),
+  /** Largest image accepted as an attachment (bytes). */
+  imageMaxBytes: z.number().int().min(1024).default(DEFAULTS.ui.imageMaxBytes),
 });
 
 /** Native Spec Kit options (specs/006 contracts/init-and-context.md § 4). */

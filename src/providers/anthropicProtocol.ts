@@ -21,7 +21,17 @@ export function toAnthropicMessages(messages: Message[]): BetaMessageParam[] {
         .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
         .map((p) => p.text)
         .join('\n');
-      out.push({ role: 'user', content: text });
+      // Images (specs/007) go before the text as base64 blocks.
+      const images: BetaContentBlockParam[] = m.content
+        .filter((p): p is Extract<typeof p, { type: 'image' }> => p.type === 'image')
+        .map((p) => ({
+          type: 'image',
+          source: { type: 'base64', media_type: p.mediaType as never, data: p.data },
+        }));
+      out.push({
+        role: 'user',
+        content: images.length ? [...images, { type: 'text', text }] : text,
+      });
     } else if (m.role === 'assistant') {
       const blocks: BetaContentBlockParam[] = [];
       for (const p of m.content) {

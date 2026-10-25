@@ -37,11 +37,35 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
       maxOutputChars: 20000,
       approvalMode: 'default',
     });
-    expect(r.ui).toEqual({ altScreen: true, mouse: true });
+    expect(r.ui).toEqual({
+      altScreen: true,
+      mouse: true,
+      pasteCollapseLines: 3,
+      attachMaxBytes: 524288,
+      attachMaxTotalBytes: 2097152,
+      imageMaxBytes: 5242880,
+    });
+  });
+
+  it('ui paste/attachment limits: integers with minimums (specs/007 contracts/attachments.md § 4)', () => {
+    expect(
+      settingsSchema.parse({ ui: { pasteCollapseLines: 1, attachMaxBytes: 1024 } }).ui,
+    ).toMatchObject({
+      pasteCollapseLines: 1,
+      attachMaxBytes: 1024,
+    });
+    expect(issuesOf({ ui: { pasteCollapseLines: 0 } })[0]).toMatch(/^ui\.pasteCollapseLines: /);
+    expect(issuesOf({ ui: { pasteCollapseLines: 2.5 } })[0]).toMatch(/^ui\.pasteCollapseLines: /);
+    expect(issuesOf({ ui: { attachMaxBytes: 100 } })[0]).toMatch(/^ui\.attachMaxBytes: /);
+    expect(issuesOf({ ui: { attachMaxTotalBytes: 'big' } })[0]).toMatch(
+      /^ui\.attachMaxTotalBytes: /,
+    );
+    expect(issuesOf({ ui: { imageMaxBytes: 1 } })[0]).toMatch(/^ui\.imageMaxBytes: /);
+    expect(issuesOf({ ui: { pasteCollapse: 3 } })).toContain('ui.pasteCollapse: unknown key');
   });
 
   it('ui.altScreen and ui.mouse are booleans with defaults', () => {
-    expect(settingsSchema.parse({ ui: { altScreen: false } }).ui).toEqual({
+    expect(settingsSchema.parse({ ui: { altScreen: false } }).ui).toMatchObject({
       altScreen: false,
       mouse: true,
     });

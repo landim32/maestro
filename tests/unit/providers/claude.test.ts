@@ -67,6 +67,9 @@ describe('claude provider — status()', () => {
     expect(none.missing).toEqual(['credentials']);
     expect(none.hint).toMatch(/ant auth login/);
   });
+  it('declares image support (specs/007 research R9)', () => {
+    expect(createClaudeProvider(makeCtx()).capabilities).toEqual({ images: true });
+  });
   it('masks the key and respects enabled=false', () => {
     const s = createClaudeProvider(
       makeCtx(
