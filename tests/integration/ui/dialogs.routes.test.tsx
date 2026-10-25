@@ -34,7 +34,11 @@ function memorySettings(initial: Record<string, unknown>) {
     },
     loader: () => ({
       settings: settingsSchema.parse(raw),
-      credentialSources: { claude: 'env' as const, qwen: 'config' as const },
+      credentialSources: {
+        claude: 'env' as const,
+        qwen: 'config' as const,
+        'claude-code': 'none' as const,
+      },
     }),
   };
 }

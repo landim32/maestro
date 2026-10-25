@@ -6,8 +6,10 @@ import { anthropicCredentialDirs, globalSettingsPath, projectSettingsPath } from
 import { formatZodIssues, settingsSchema, PROVIDER_IDS } from './schema.js';
 import type { ProviderId, Settings } from './schema.js';
 import type { ApprovalMode } from '../tools/approval.js';
+import { locateClaudeCode } from '../utils/process.js';
 
-export type CredentialSource = 'config' | 'env' | 'profile' | 'none';
+/** `cli`: the provider's own CLI holds the login (Claude Code, specs/010). */
+export type CredentialSource = 'config' | 'env' | 'profile' | 'cli' | 'none';
 
 export interface LoadOverrides {
   provider?: ProviderId;
@@ -156,7 +158,12 @@ export function resolveCredentialSources(
   if (qwenFromEnv) qwen = 'env';
   else if (settings.providers.qwen.apiKey) qwen = 'config';
 
-  return { claude, qwen };
+  // Claude Code handles its own login (specs/010); Maestro only checks that the CLI exists.
+  const cc = settings.providers['claude-code'];
+  const claudeCode: CredentialSource =
+    cc.enabled && locateClaudeCode(cc.command, { env, platform }) ? 'cli' : 'none';
+
+  return { claude, qwen, 'claude-code': claudeCode };
 }
 
 /**

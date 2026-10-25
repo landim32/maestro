@@ -268,6 +268,15 @@ describe('claude provider — streaming', () => {
         'context_length',
       ],
       [new mock.BadRequestError(400, 'some other problem'), 'provider'],
+      // specs/010 FR-014: credits exhausted → billing, with a hint pointing to Claude Code
+      [
+        new mock.BadRequestError(
+          400,
+          '400 {"type":"error","error":{"type":"invalid_request_error","message":"Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits."}}',
+        ),
+        'billing',
+        /consome créditos.*Claude Code/,
+      ],
       [new mock.APIError(500, `boom ${key}`), 'provider'],
       [new Error('weird'), 'unknown'],
     ];

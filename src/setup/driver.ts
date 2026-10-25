@@ -3,6 +3,13 @@ import type { SessionController } from '../session/controller.js';
 import { MaestroError } from '../utils/errors.js';
 import { createAntCli, envShadowWarning } from './antCli.js';
 import type { AntCli, LoginRun } from './antCli.js';
+import {
+  CLAUDE_CODE_INSTALL_HINTS,
+  createClaudeCodeCli,
+  isSubscriptionLogin,
+} from './claudeCodeCli.js';
+import type { ClaudeCodeCli } from './claudeCodeCli.js';
+import { LOGIN_HINT } from '../providers/claudeCodeStream.js';
 import { authFlowReducer, effectsFor, initialAuthFlow, refreshMenu } from './authFlow.js';
 import type { AuthFlowEvent, AuthFlowState } from './authFlow.js';
 import { testConnection as defaultTestConnection } from './connectionTest.js';
@@ -23,6 +30,8 @@ import type { RoutesFlowContext, RoutesFlowEvent, RoutesFlowState } from './rout
 export interface SetupDeps {
   testConnection: ConnectionTester;
   ant: AntCli;
+  /** Claude Code CLI (specs/010): located and queried, never logged in by Maestro. */
+  claudeCode: ClaudeCodeCli;
   env: NodeJS.ProcessEnv;
   platform: NodeJS.Platform;
 }
@@ -36,6 +45,7 @@ export class SetupDriver {
   private testAbort?: AbortController;
   private loginRun?: LoginRun;
   private antPath?: string;
+  private claudeCodePath?: string;
   private generation = 0;
 
   constructor(
@@ -47,6 +57,7 @@ export class SetupDriver {
     this.deps = {
       testConnection: deps.testConnection ?? defaultTestConnection,
       ant: deps.ant ?? createAntCli({ env, platform }),
+      claudeCode: deps.claudeCode ?? createClaudeCodeCli({ env, platform }),
       env,
       platform,
     };
@@ -249,6 +260,18 @@ export class SetupDriver {
       }
 
       case 'detectAnt': {
+        if (state.step === 'login.detect' && state.method.id === 'claude-code') {
+          const exe = this.deps.claudeCode.locate(
+            this.ctl.settings.providers['claude-code'].command,
+          );
+          this.claudeCodePath = exe;
+          this.dispatchAuth({
+            type: 'antDetected',
+            found: Boolean(exe),
+            hints: CLAUDE_CODE_INSTALL_HINTS,
+          });
+          return;
+        }
         const loc = this.deps.ant.locate();
         this.antPath = loc?.path;
         this.dispatchAuth({
@@ -260,6 +283,10 @@ export class SetupDriver {
       }
 
       case 'runLogin': {
+        if (state.step === 'login.running' && state.method.id === 'claude-code') {
+          this.checkClaudeCode(stillCurrent);
+          return;
+        }
         if (!this.antPath) {
           this.dispatchAuth({
             type: 'loginExit',
@@ -308,6 +335,56 @@ export class SetupDriver {
       default:
         return;
     }
+  }
+
+  /**
+   * `/auth` → Claude Code (specs/010 FR-012): reads `claude auth status` and enables the
+   * provider when Claude Code is signed in. Maestro never starts a login itself.
+   */
+  private checkClaudeCode(stillCurrent: () => boolean): void {
+    const exe = this.claudeCodePath;
+    const finish = (ok: boolean, reason: string | undefined, warnings: string[]) => {
+      if (this.ctl.dialog?.type === 'auth' && this.ctl.dialog.flow.step === 'login.running') {
+        this.dispatchAuth({ type: 'loginExit', ok, reason, warnings });
+      }
+    };
+    if (!exe) {
+      finish(false, 'Claude Code não localizado', []);
+      return;
+    }
+    void this.deps.claudeCode.readStatus(exe).then((status) => {
+      if (!stillCurrent()) return;
+      if ('error' in status) {
+        this.ctl.logger.log('setup.claudecode', { ok: false });
+        finish(false, status.error, []);
+        return;
+      }
+      this.ctl.logger.log('setup.claudecode', {
+        ok: status.loggedIn,
+        subscription: isSubscriptionLogin(status),
+      });
+      if (!status.loggedIn) {
+        finish(false, `o Claude Code não está logado. ${LOGIN_HINT}`, []);
+        return;
+      }
+      try {
+        this.ctl.writeSettings([{ path: 'providers.claude-code.enabled', value: true }]);
+      } catch (err) {
+        finish(false, err instanceof MaestroError ? err.message : String(err), []);
+        return;
+      }
+      this.ctl.reloadSettings();
+      const who = status.maskedEmail ? ` como ${status.maskedEmail}` : '';
+      const warnings = [
+        `Claude Code logado${who} (${status.authMethod ?? 'método desconhecido'}).`,
+      ];
+      if (!isSubscriptionLogin(status)) {
+        warnings.push(
+          'Este login do Claude Code não é pela assinatura do claude.ai: o uso pode consumir créditos de API. Faça /login no Claude Code com a sua conta para usar a assinatura.',
+        );
+      }
+      finish(true, undefined, warnings);
+    });
   }
 
   /** Builds and writes the settings patch for a fields method; returns warnings. */

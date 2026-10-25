@@ -95,6 +95,8 @@ export interface AnthropicErrorMapperOptions {
   rejectedHint: string;
   baseUrl?: string;
   endpointName: string;
+  /** Hint for the "credit balance too low" error (specs/010 FR-014). */
+  billingHint?: string;
 }
 
 /** Builds a mapper from Anthropic SDK errors to MaestroError for a given provider. */
@@ -130,6 +132,19 @@ export function createAnthropicErrorMapper(
         category: 'network',
         message: clean(err.message || `could not reach ${o.endpointName}`),
         hint: o.baseUrl ? `Check providers.${o.providerId}.baseUrl (${o.baseUrl}).` : undefined,
+      });
+    }
+    if (
+      err instanceof Anthropic.APIError &&
+      /credit balance|purchase credits|billing/i.test(err.message)
+    ) {
+      return new MaestroError({
+        ...base,
+        category: 'billing',
+        message: 'o saldo de créditos de API desta conta acabou',
+        hint:
+          o.billingHint ??
+          'Compre créditos em Plans & Billing no console da Anthropic, ou troque de provedor com /model.',
       });
     }
     if (

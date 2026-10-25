@@ -4,6 +4,8 @@ export type ErrorCategory =
   | 'auth'
   | 'network'
   | 'rate_limit'
+  /** The API account has no credits left (specs/010 FR-014). */
+  | 'billing'
   | 'context_length'
   | 'invalid_config'
   | 'provider'
@@ -99,6 +101,7 @@ const CATEGORY_LABEL: Record<ErrorCategory, string> = {
   auth: 'authentication failed',
   network: 'network unavailable',
   rate_limit: 'rate limit exceeded',
+  billing: 'créditos de API insuficientes',
   context_length: 'conversation too long',
   invalid_config: 'invalid configuration',
   provider: 'provider error',

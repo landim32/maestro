@@ -20,6 +20,8 @@ export function mapAnthropicError(err: unknown, ctx: ProviderContext): MaestroEr
     rejectedHint: 'Check ANTHROPIC_API_KEY / your ant profile, or providers.claude.apiKey.',
     baseUrl: ctx.settings.providers.claude.baseUrl,
     endpointName: 'the Anthropic API',
+    billingHint:
+      'O provedor claude usa a API e consome créditos. Compre créditos em Plans & Billing no console da Anthropic, ou use a assinatura pelo Claude Code: /auth → Claude Code e /model claude-code.',
   })(err);
 }
 

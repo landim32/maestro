@@ -57,3 +57,24 @@ export function findExecutable(name: string, opts: FindExecutableOptions = {}): 
   }
   return undefined;
 }
+
+/**
+ * Locates the user's Claude Code executable (specs/010 research R7): the configured `command`,
+ * else `claude` on PATH. On Windows a real `.exe` is preferred over extensionless shims.
+ */
+export function locateClaudeCode(
+  command: string | undefined,
+  opts: { env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform } = {},
+): string | undefined {
+  const platform = opts.platform ?? process.platform;
+  if (command) {
+    if (path.isAbsolute(command) || command.includes('/') || command.includes('\\')) {
+      return isExecutableFile(command) ? command : undefined;
+    }
+    return findExecutable(command, opts);
+  }
+  if (platform === 'win32') {
+    return findExecutable('claude.exe', opts) ?? findExecutable('claude', opts);
+  }
+  return findExecutable('claude', opts);
+}

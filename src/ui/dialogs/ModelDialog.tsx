@@ -1,6 +1,7 @@
 import { Box, Text } from 'ink';
 import type { CredentialSource } from '../../config/loader.js';
 import type { ModelFlowState } from '../../setup/modelFlow.js';
+import { BILLING_NOTES } from '../../providers/status.js';
 import { DialogFrame } from './DialogFrame.js';
 import { ProgressView } from './ProgressView.js';
 import { ResultView } from './ResultView.js';
@@ -26,6 +27,7 @@ export function credentialLabel(
 ): string {
   if (!configured) return NOT_CONFIGURED;
   if (source === 'profile') return 'perfil';
+  if (source === 'cli') return 'Claude Code';
   if (maskedKey) return `chave ${maskedKey}`;
   if (source === 'env') return 'ambiente';
   return '';
@@ -47,7 +49,14 @@ export function groupedItems(flow: Extract<ModelFlowState, { step: 'list' }>): {
       lastProvider = it.providerId;
       items.push({
         header: true,
-        label: `${it.providerId} · ${credentialLabel(it.configured, it.credentialSource, it.maskedKey)}`,
+        // specs/010 US3: the billing note tells API credits apart from the Claude Code subscription.
+        label: [
+          it.providerId,
+          credentialLabel(it.configured, it.credentialSource, it.maskedKey),
+          BILLING_NOTES[it.providerId],
+        ]
+          .filter(Boolean)
+          .join(' · '),
       });
     }
     if (k === flow.selected) selectedIndex = items.length;

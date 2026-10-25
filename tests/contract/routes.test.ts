@@ -47,7 +47,7 @@ function make(settings: Record<string, unknown> = {}, opts: { interactive?: bool
     tools: [],
     system: 'SYS',
     interactive: opts.interactive ?? true,
-    providerOverride: (id) => providers[id],
+    providerOverride: (id) => providers[id as 'claude' | 'qwen'],
     commands: [...DEFAULT_COMMANDS, planCmd],
   });
   return { ctl, session, providers };

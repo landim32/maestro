@@ -93,7 +93,7 @@ describe('routesFlow (contracts/routes-dialog.md § 2–4)', () => {
     const prov = run(ctx, [enter, enter]); // chat → set
     expect(prov.step).toBe('provider');
     if (prov.step !== 'provider') return;
-    expect(prov.providers.map((p) => p.id)).toEqual(['claude', 'qwen']);
+    expect(prov.providers.map((p) => p.id)).toEqual(['claude', 'qwen', 'claude-code']);
     expect(prov.selected).toBe(0); // chat resolves to claude today
     const model = run(ctx, [down, enter], prov);
     expect(model).toMatchObject({ step: 'model', route: 'chat', providerId: 'qwen' });

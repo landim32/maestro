@@ -80,7 +80,7 @@ describe('slash commands', () => {
     expect(ctl.transient).toEqual({ text: 'modo: YOLO', seq: 3 });
     ctl.applySettings({
       settings: makeSettings({ tools: { approvalMode: 'auto' } }),
-      credentialSources: { claude: 'env', qwen: 'none' },
+      credentialSources: { claude: 'env', qwen: 'none', 'claude-code': 'none' },
     });
     expect(ctl.approvalMode).toBe('yolo');
     expect(ctl.settings.tools.approvalMode).toBe('auto');

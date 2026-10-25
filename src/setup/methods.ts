@@ -11,7 +11,7 @@ import type { QwenProtocol } from '../config/defaults.js';
 import type { Settings } from '../config/schema.js';
 import type { ProviderId, ProviderStatus } from '../providers/types.js';
 
-export type MethodId = 'claude-api' | 'claude-login' | 'qwen';
+export type MethodId = 'claude-api' | 'claude-login' | 'claude-code' | 'qwen';
 export type FieldKey = 'protocol' | 'apiKey' | 'baseUrl' | 'model';
 export type Values = Record<FieldKey, string>;
 
@@ -81,7 +81,7 @@ export const CONNECTION_METHODS: ConnectionMethod[] = [
   {
     id: 'claude-api',
     label: 'Claude API',
-    description: 'chave de API da Anthropic',
+    description: 'chave de API · consome créditos de API',
     providerId: 'claude',
     kind: 'fields',
     fields: [
@@ -101,7 +101,7 @@ export const CONNECTION_METHODS: ConnectionMethod[] = [
   {
     id: 'claude-login',
     label: 'Claude Auth Login',
-    description: 'login no navegador (perfil OAuth)',
+    description: 'login do console (ant) · consome créditos',
     providerId: 'claude',
     kind: 'login',
     fields: [],
@@ -138,6 +138,14 @@ export const CONNECTION_METHODS: ConnectionMethod[] = [
       apiKeyField('Chave de API (sk-…)'),
       modelField(DEFAULTS.qwen.model),
     ],
+  },
+  {
+    id: 'claude-code',
+    label: 'Claude Code',
+    description: 'Claude Code instalado · usa a assinatura',
+    providerId: 'claude-code',
+    kind: 'login',
+    fields: [],
   },
 ];
 
@@ -176,13 +184,15 @@ export function methodStatusLabel(
 ): string {
   if (status === 'not_configured') return 'não configurado';
   const how =
-    method.id === 'claude-login'
-      ? 'perfil'
-      : s?.maskedKey
-        ? `chave ${s.maskedKey}`
-        : s?.credentialSource === 'env'
-          ? 'ambiente'
-          : 'chave';
+    method.id === 'claude-code'
+      ? 'Claude Code'
+      : method.id === 'claude-login'
+        ? 'perfil'
+        : s?.maskedKey
+          ? `chave ${s.maskedKey}`
+          : s?.credentialSource === 'env'
+            ? 'ambiente'
+            : 'chave';
   return status === 'active' ? `ativo (${how})` : `configurado (${how})`;
 }
 
@@ -192,7 +202,8 @@ export function currentValues(method: ConnectionMethod, settings: Settings): Val
   const protocol = method.providerId === 'qwen' ? settings.providers.qwen.protocol : '';
   const partial: Values = { protocol, apiKey: '', baseUrl: '', model: '' };
   const baseUrlField = method.fields.find((f) => f.key === 'baseUrl');
-  partial.baseUrl = p.baseUrl ?? (baseUrlField ? fieldDefault(baseUrlField, partial) : '');
+  const storedUrl = 'baseUrl' in p ? p.baseUrl : undefined;
+  partial.baseUrl = storedUrl ?? (baseUrlField ? fieldDefault(baseUrlField, partial) : '');
   const modelField = method.fields.find((f) => f.key === 'model');
   partial.model = p.model ?? (modelField ? fieldDefault(modelField, partial) : '');
   return partial;

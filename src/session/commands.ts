@@ -230,13 +230,14 @@ const exit: SlashCommand = {
   },
 };
 
-const METHOD_IDS: readonly MethodId[] = ['claude-api', 'claude-login', 'qwen'];
+const METHOD_IDS: readonly MethodId[] = ['claude-api', 'claude-login', 'claude-code', 'qwen'];
 
 const auth: SlashCommand = {
   name: 'auth',
   aliases: ['connect', 'login'],
-  usage: '/auth [claude-api|claude-login|qwen]',
-  description: 'Conectar um provedor de IA (Claude API, Claude Auth Login, Qwen).',
+  usage: '/auth [claude-api|claude-login|claude-code|qwen]',
+  description:
+    'Conectar um provedor de IA (Claude API e Claude Auth Login consomem créditos de API; Claude Code usa a assinatura; Qwen).',
   run(ctl, args) {
     if (!ctl.interactive) {
       ctl.notice(NON_INTERACTIVE_AUTH_HINT, 'info');
