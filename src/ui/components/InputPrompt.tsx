@@ -181,7 +181,7 @@ export function InputPrompt({
           }
           setValue('');
           leaveHistory();
-          onSubmit(completion);
+          onSubmit(completion.trimEnd()); // never submit the trailing argument space (`/model ` → `/model`)
           return;
         }
         const text = valueRef.current;
