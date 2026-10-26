@@ -16,8 +16,8 @@
 | `verify.command` | `string[]` | derivado do `package.json` (scripts `test`, `lint`, `build` existentes) |
 | `verify.maxAttempts` | `int 0–10` | 3 |
 | `verify.timeoutMs` | `int ≥ 1000` | 600000 |
-| `limits.turns` | `int ≥ 7` | 60 |
-| `limits.minutes` | `int ≥ 1` | 120 |
+| `limits.turns` | `0` (sem limite) ou `int ≥ 7` | 0 |
+| `limits.minutes` | `int ≥ 0` (0 = sem limite; esperas por limite de taxa não contam) | 0 |
 | `limits.tokens` | `int ≥ 0` (0 = sem teto) | 0 |
 | `commitPrefix` | `'fix:' \| 'feat:'` | `'fix:'` |
 | `push` | `boolean` | `false` |

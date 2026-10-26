@@ -195,6 +195,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   questionFlow?: AskUserFlowState;
   /** True when the last slash command refused to run (unknown or missing prerequisites). */
   lastCommandBlocked = false;
+  /** Time the last submit spent waiting for provider rate limits (excluded from autopilot caps). */
+  lastRetryWaitMs = 0;
   /** Paste/file/image markers of this session (specs/007 contracts/paste-chips.md). */
   readonly chips = new ChipRegistry();
   /** Live mouse tracking state (initial: `ui.mouse`); `/mouse` toggles it for the session. */
@@ -711,6 +713,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       this.notice('Feche o diálogo (Esc) antes de enviar mensagens.', 'warn');
       return undefined;
     }
+    this.lastRetryWaitMs = 0;
     const submission = typeof input === 'string' ? undefined : input;
     const typed = typeof input === 'string' ? input : input.display;
     const expanded = typeof input === 'string' ? input : input.text;
@@ -820,6 +823,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
         },
         // Rate limit: the partial reply is dropped and the request retried after a wait.
         onRetry: (waitMs, attempt) => {
+          this.lastRetryWaitMs += waitMs;
           this.partialText = '';
           this.logger.log('turn.retry', { provider: provider.id, waitMs, attempt });
           this.emit('change');

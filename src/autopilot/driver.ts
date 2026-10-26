@@ -391,7 +391,8 @@ export class AutopilotDriver {
         const t0 = this.now();
         this.askFailure = undefined;
         const result = await this.ctl.submit(next.text, { record: false });
-        const ms = this.now() - t0;
+        // Waiting for a provider rate limit does not count against the story's time cap.
+        const ms = Math.max(0, this.now() - t0 - this.ctl.lastRetryWaitMs);
         const after = this.disk(root);
         if (this.askFailure) return onDecisionFailed(st, this.askFailure);
         const blocked =

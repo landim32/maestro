@@ -63,8 +63,9 @@ export const DEFAULTS = {
   autopilot: {
     verifyMaxAttempts: 3,
     verifyTimeoutMs: 600_000,
-    turns: 60,
-    minutes: 120,
+    /** Per-story caps; 0 = no limit (the autopilot never stops by itself, only at a failed gate). */
+    turns: 0,
+    minutes: 0,
   },
   ui: {
     /** Pastes longer than this (lines) collapse into a marker (specs/007 research R10). */

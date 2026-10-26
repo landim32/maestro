@@ -70,12 +70,16 @@ function enterStep(s: FlowState, ctx: FlowContext): Step {
   return { state: s, next: { type: 'turn', text: initialTurnText(s.step, story), clear: true } };
 }
 
-/** Positions the cursor on the first story/step not done and returns its first action. */
+/**
+ * Positions the cursor on the first story/step not done and returns its first action. The
+ * resumed story's usage starts again from zero, so a story stopped by a cap can be resumed.
+ */
 export function start(run: Run, ctx: FlowContext): Step {
   const r = clone(run);
   r.status = 'active';
   delete r.stopped;
   const si = r.stories.findIndex((st) => st.status !== 'done');
+  if (si >= 0) r.stories[si]!.usage = { turns: 0, ms: 0, inputTokens: 0, outputTokens: 0 };
   if (si < 0) {
     r.status = 'done';
     return {
@@ -108,8 +112,9 @@ function interrupt(s: FlowState, reason: string): Step {
 /** Per-story limits (FR-019); returns the reason when one is exceeded. */
 export function limitExceeded(story: StoryRun, settings: AutopilotSettings): string | undefined {
   const l = settings.limits;
-  if (story.usage.turns > l.turns) return `teto de ${l.turns} turnos atingido`;
-  if (story.usage.ms > l.minutes * 60_000) return `teto de ${l.minutes} minutos atingido`;
+  if (l.turns > 0 && story.usage.turns > l.turns) return `teto de ${l.turns} turnos atingido`;
+  if (l.minutes > 0 && story.usage.ms > l.minutes * 60_000)
+    return `teto de ${l.minutes} minutos atingido`;
   const tokens = story.usage.inputTokens + story.usage.outputTokens;
   if (l.tokens > 0 && tokens > l.tokens) return `teto de ${l.tokens} tokens atingido`;
   return undefined;

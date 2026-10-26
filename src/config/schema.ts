@@ -153,8 +153,15 @@ export const autopilotSettingsSchema = z
     limits: z
       .strictObject({
         _comment: comment,
-        turns: z.number().int().min(7).default(DEFAULTS.autopilot.turns),
-        minutes: z.number().int().min(1).default(DEFAULTS.autopilot.minutes),
+        /** 0 = no limit; a cap must leave room for the 7 steps. */
+        turns: z
+          .number()
+          .int()
+          .min(0)
+          .refine((n) => n === 0 || n >= 7, 'use 0 (sem limite) ou pelo menos 7')
+          .default(DEFAULTS.autopilot.turns),
+        /** 0 = no limit. Waits for a provider rate limit are not counted. */
+        minutes: z.number().int().min(0).default(DEFAULTS.autopilot.minutes),
         /** 0 = no limit. */
         tokens: z.number().int().min(0).default(0),
       })
