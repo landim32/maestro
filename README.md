@@ -86,6 +86,7 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
 ```json
 {
   "activeProvider": "claude",
+  "language": "pt-BR",
   "providers": {
     "claude": {
       "enabled": true,
@@ -131,6 +132,8 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
   }
 }
 ```
+
+**Idioma das respostas.** Por padrão o modelo responde no idioma em que você escreve. No autopiloto e nos comandos do Spec Kit, porém, boa parte do texto enviado ao modelo é em inglês, e modelos menores podem trocar de idioma no meio do caminho. `"language": "pt-BR"` (no global ou no `./.maestro/settings.json`) fixa o idioma de todas as respostas e dos artefatos escritos (specs, planos, tarefas, mensagens de commit, comentários), para todos os provedores e rotas. Os identificadores de código e os termos técnicos ficam no original. Aceita um código (`pt-BR`, `pt-PT`, `en`, `es`…) ou o nome do idioma por extenso.
 
 Em `tools`: `maxToolIterations` é quantas rodadas de ferramentas o modelo pode fazer num mesmo turno. O padrão `0` significa **sem limite**, como no Claude Code, no qwen-code e no gemini-cli: o turno só termina quando o modelo responde sem pedir ferramenta, ou quando você aperta Esc. Um valor positivo cria um teto (no `claude-code`, 5 chamadas por rodada) e faz o Maestro parar com o aviso `stopped after N tool iterations in one turn`.
 
