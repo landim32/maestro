@@ -296,9 +296,10 @@ const model: SlashCommand = {
 /** `/autopilot` (specs/011 contracts/autopilot-cli.md § 1): a local command, the turns are the steps'. */
 const autopilot: SlashCommand = {
   name: 'autopilot',
-  usage: '/autopilot <arquivo> [--resume] | --status',
-  description: 'Executa as histórias do arquivo por todo o Spec Kit, sem interação.',
-  async run(ctl, args) {
+  usage: '/autopilot <arquivo | prompt> [--resume] | --status',
+  description:
+    'Executa as histórias do arquivo (ou o prompt, como uma história) por todo o Spec Kit, sem interação.',
+  async run(ctl, args, rest) {
     if (ctl.session.state !== 'idle' || ctl.autopilotStatus) {
       ctl.notice('Aguarde a resposta (ou a execução do autopiloto) terminar.', 'warn');
       return;
@@ -308,12 +309,16 @@ const autopilot: SlashCommand = {
       return;
     }
     const resume = args.includes('--resume');
-    const file = args.find((a) => !a.startsWith('--'));
-    if (!file && !resume) {
-      ctl.notice('Uso: /autopilot <arquivo de histórias> [--resume] · /autopilot --status', 'warn');
+    // The raw text keeps a prompt's line breaks; only the flag is taken out.
+    const input = (rest ?? '').replace(/(^|\s)--resume(?=\s|$)/g, '$1').trim();
+    if (!input && !resume) {
+      ctl.notice(
+        'Uso: /autopilot <arquivo de histórias | prompt> [--resume] · /autopilot --status',
+        'warn',
+      );
       return;
     }
-    const result = await ctl.createAutopilot().start(file, { resume });
+    const result = await ctl.createAutopilot().start(input || undefined, { resume });
     ctl.notice(result.report, result.code === 0 ? 'info' : 'warn');
   },
 };

@@ -13,7 +13,7 @@ export interface ParsedArgs {
   model?: string;
   /** `--route` (specs/008): forced route for a `-p` request. */
   route?: string;
-  /** `--autopilot <file>` (specs/011): run the stories file through the Spec Kit, non-interactive. */
+  /** `--autopilot <file | prompt>` (specs/011): run the stories (or the prompt) through the Spec Kit. */
   autopilot?: string;
   /** `--resume` with --autopilot: continue the interrupted or stopped run. */
   resume?: boolean;
@@ -56,7 +56,7 @@ function build(argv: string[]) {
     .option('autopilot', {
       type: 'string',
       describe:
-        'Run every story of the file through the Spec Kit without interaction (non-interactive).',
+        'Run every story of the file (or a prompt, as one story) through the Spec Kit without interaction.',
     })
     .option('resume', {
       type: 'boolean',
@@ -127,19 +127,25 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
       `Unexpected argument: ${positional.join(' ')}. Use -p "<prompt>" to pass a prompt.`,
     );
   }
-  const autopilot = parsed.autopilot as string | undefined;
+  let autopilot = parsed.autopilot as string | undefined;
   if (parsed.resume && autopilot === undefined)
     throw new UsageError('--resume só vale com --autopilot <arquivo>.');
   if (autopilot !== undefined) {
-    // `-p --autopilot x` is accepted (the -p is then empty); a real prompt is not.
-    if (parsed.prompt !== undefined && parsed.prompt.trim() !== '')
-      throw new UsageError('--autopilot não pode ser combinado com um prompt (-p "…").');
+    const prompt = parsed.prompt?.trim() ?? '';
+    // `-p "texto" --autopilot`: the prompt is the autopilot's input (one story).
+    if (autopilot.trim() === '' && prompt !== '' && parsed.prompt !== '-' && !parsed.resume)
+      autopilot = parsed.prompt!;
+    // `-p --autopilot x` is accepted (the -p is then empty); a prompt plus a file is not.
+    else if (prompt !== '')
+      throw new UsageError(
+        '--autopilot <arquivo> não pode ser combinado com um prompt (-p "…"); use -p "…" --autopilot.',
+      );
     if (parsed.route !== undefined)
       throw new UsageError(
         '--autopilot não pode ser combinado com --route (cada passo usa a sua rota).',
       );
     if (autopilot.trim() === '' && !parsed.resume)
-      throw new UsageError('--autopilot precisa do arquivo de histórias.');
+      throw new UsageError('--autopilot precisa do arquivo de histórias ou de um prompt.');
   } else if (parsed.prompt !== undefined && parsed.prompt !== '-' && parsed.prompt.trim() === '') {
     throw new UsageError('--prompt must not be empty.');
   }

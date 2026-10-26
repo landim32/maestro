@@ -141,6 +141,39 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     expect(controller.autopilotStatus).toBeUndefined();
   });
 
+  it('a prompt instead of a file: one story saved in the local run folder, resumable', async () => {
+    const { controller, model } = await setup();
+    const prompt =
+      'Saudação\nComo usuário, quero uma função greet(name) que devolve "Olá, <name>!".';
+    const r = await controller.createAutopilot().start(prompt);
+    expect(r.code).toBe(0);
+    expect(model.steps[0]).toBe('specify');
+    const s = state();
+    expect(s.input).toBe(`.maestro/autopilot/${s.id}.md`);
+    expect(s.stories.map((x) => x.title)).toEqual(['Saudação']);
+    expect(repo.read(s.input)).toBe(`## Saudação\n\n${prompt}\n`);
+    expect(r.report).toMatch(/✓ 1\. 001-saudao · /);
+    // local file, like the state and the log: the tree stays clean
+    expect(repo.git('status', '--porcelain')).toBe('');
+    expect(repo.git('ls-files', '.maestro/autopilot')).toBe('');
+  });
+
+  it('a prompt is refused with --resume; a refused prompt leaves no file behind', async () => {
+    const { controller } = await setup();
+    let r = await controller.createAutopilot().start('faça um CRUD', { resume: true });
+    expect(r.report).toMatch(/não passe um prompt/);
+    // /autopilot takes the raw text after the name: the prompt with --resume removed
+    await controller.submit('/autopilot faça um CRUD --resume');
+    expect(controller.notices.at(-1)?.text).toMatch(/não passe um prompt/);
+    repo.write('sujo.txt', 'x');
+    r = await controller.createAutopilot().start('faça um CRUD de clientes');
+    expect(r.report).toMatch(/alterações não commitadas/);
+    const dir = path.join(repo.root, '.maestro', 'autopilot');
+    expect(fs.existsSync(dir) ? fs.readdirSync(dir).filter((f) => f.endsWith('.md')) : []).toEqual(
+      [],
+    );
+  });
+
   it('refuses to start: dirty tree, missing file, no stories', async () => {
     const { controller } = await setup();
     repo.write('historias.md', ONE);

@@ -24,6 +24,29 @@ export function sectionLikeTitles(stories: Story[]): string[] {
   return stories.map((s) => s.title).filter((t) => SECTION_TITLE.test(t));
 }
 
+/**
+ * Whether the /autopilot argument names a stories file rather than being a prompt: one token
+ * with a path separator or an extension (an existing file is checked by the driver first).
+ */
+export function looksLikePath(text: string): boolean {
+  const t = text.trim();
+  return t !== '' && !/\s/.test(t) && (/[/\x5c]/.test(t) || /\.[A-Za-z0-9]{1,5}$/.test(t));
+}
+
+export const PROMPT_TITLE_MAX = 72;
+
+/**
+ * Stories file for `/autopilot <prompt>`: always ONE story, titled by the prompt's first line.
+ * The prompt's own "#"/"##" headings become "###" so they stay inside that story.
+ */
+export function promptStoriesFile(prompt: string): string {
+  const text = prompt.replace(/\r\n/g, '\n').trim();
+  const first = (text.split('\n').find((l) => l.trim() !== '') ?? '').replace(/^#+\s*/, '').trim();
+  const title =
+    first.length > PROMPT_TITLE_MAX ? `${first.slice(0, PROMPT_TITLE_MAX - 1).trimEnd()}…` : first;
+  return `## ${title}\n\n${text.replace(/^#{1,2}(?=\s)/gm, '###')}\n`;
+}
+
 export function parseStories(markdown: string): Story[] | { error: string } {
   const text = markdown.replace(/\r\n/g, '\n');
   const lines = text.split('\n');

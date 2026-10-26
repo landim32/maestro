@@ -34,7 +34,7 @@ import type { RemotePort } from './remote.js';
 import { formatReport } from './report.js';
 import { checkResume, resumeBranch } from './resume.js';
 import { isPidAlive, readRunState, writeRunState } from './state.js';
-import { parseStories, sectionLikeTitles } from './stories.js';
+import { looksLikePath, parseStories, promptStoriesFile, sectionLikeTitles } from './stories.js';
 import { emptyStory, STEPS } from './types.js';
 import type { Decision, Run, Story } from './types.js';
 
@@ -170,11 +170,23 @@ export class AutopilotDriver {
     this.ctl.cancel();
   }
 
-  async start(file: string | undefined, opts: { resume?: boolean } = {}): Promise<AutopilotResult> {
+  /**
+   * `input` is a stories file or, when it is not one, a prompt: the prompt becomes a single story,
+   * saved next to the run's log (`.maestro/autopilot/<id>.md`, local) so --resume works the same.
+   */
+  async start(
+    input: string | undefined,
+    opts: { resume?: boolean } = {},
+  ): Promise<AutopilotResult> {
     const cwd = this.ctl.session.cwd;
     const git = this.deps.git;
     const root = findSpecifyRoot(cwd, git);
-    const refuse = (msg: string): AutopilotResult => ({ code: 2, report: msg });
+    const newId = runId(this.now());
+    let promptFile: string | undefined;
+    const refuse = (msg: string): AutopilotResult => {
+      if (promptFile) fs.rmSync(promptFile, { force: true });
+      return { code: 2, report: msg };
+    };
 
     if (!git.hasGit(root))
       return refuse('O autopiloto precisa de um repositório git (commits por passo e retomada).');
@@ -184,7 +196,15 @@ export class AutopilotDriver {
 
     const saved = readRunState(root);
     if (saved && 'error' in saved) return refuse(saved.error);
-    let inputRel = file;
+    let inputRel = input?.trim() || undefined;
+    if (inputRel && !fs.existsSync(path.join(root, inputRel)) && !looksLikePath(inputRel)) {
+      if (opts.resume)
+        return refuse('--resume retoma a execução salva; não passe um prompt junto.');
+      promptFile = path.join(path.dirname(jsonlPath(root, newId)), `${newId}.md`);
+      fs.mkdirSync(path.dirname(promptFile), { recursive: true });
+      fs.writeFileSync(promptFile, promptStoriesFile(inputRel));
+      inputRel = path.relative(root, promptFile).split(path.sep).join('/');
+    }
     if (!inputRel) {
       if (!opts.resume || !saved)
         return refuse('Uso: /autopilot <arquivo de histórias> [--resume]');
@@ -275,7 +295,7 @@ export class AutopilotDriver {
         );
       run = {
         version: 1,
-        id: runId(this.now()),
+        id: newId,
         input: rel,
         inputHash,
         baseBranch: git.currentBranch(root) ?? 'main',

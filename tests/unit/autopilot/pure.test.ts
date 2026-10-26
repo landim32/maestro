@@ -3,7 +3,14 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseStories, sectionLikeTitles, specifyText } from '../../../src/autopilot/stories.js';
+import {
+  looksLikePath,
+  parseStories,
+  PROMPT_TITLE_MAX,
+  promptStoriesFile,
+  sectionLikeTitles,
+  specifyText,
+} from '../../../src/autopilot/stories.js';
 import {
   countTasks,
   openTaskLines,
@@ -169,6 +176,23 @@ describe('gates (contracts/gates.md § 2)', () => {
       kind: 'stop',
       reason: 'sem progresso (1/3 tarefas) depois de 2 lembretes',
     });
+  });
+  it('looksLikePath and promptStoriesFile: a prompt is always one story', () => {
+    expect(looksLikePath('historias.md')).toBe(true);
+    expect(looksLikePath('docs/historias')).toBe(true);
+    expect(looksLikePath('docs\x5chistorias')).toBe(true);
+    expect(looksLikePath('crie um CRUD de clientes')).toBe(false);
+    expect(looksLikePath('CRUD')).toBe(false);
+    expect(looksLikePath('  ')).toBe(false);
+    const file = promptStoriesFile('# Clientes\r\nQuero um CRUD.\n\n## Regras\nnome obrigatório\n');
+    const one = parseStories(file) as Array<{ title: string; body: string }>;
+    expect(one).toHaveLength(1);
+    expect(one[0]!.title).toBe('Clientes');
+    expect(one[0]!.body).toContain('### Clientes\nQuero um CRUD.\n\n### Regras\nnome obrigatório');
+    const long = promptStoriesFile('palavra '.repeat(30));
+    const title = (parseStories(long) as Array<{ title: string }>)[0]!.title;
+    expect(title.length).toBe(PROMPT_TITLE_MAX);
+    expect(title.endsWith('…')).toBe(true);
   });
   it('sectionLikeTitles: one story split in "## " sections vs real stories', () => {
     const doc = parseStories(

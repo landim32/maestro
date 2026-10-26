@@ -91,6 +91,14 @@ describe('CLI --autopilot (contracts/autopilot-cli.md § 2)', () => {
     await expect(parseArgs(['-p', 'faça algo', '--autopilot', 'h.md'])).rejects.toThrow(/prompt/);
     await expect(parseArgs(['--autopilot', 'h.md', '--route', 'infra'])).rejects.toThrow(/--route/);
     await expect(parseArgs(['--autopilot', ''])).rejects.toThrow(/arquivo/);
+    // a prompt instead of a file: `--autopilot "<texto>"` or `-p "<texto>" --autopilot`
+    expect(await parseArgs(['-p', 'crie um CRUD', '--autopilot'])).toMatchObject({
+      autopilot: 'crie um CRUD',
+      prompt: undefined,
+    });
+    expect(await parseArgs(['--autopilot', 'crie um CRUD de clientes'])).toMatchObject({
+      autopilot: 'crie um CRUD de clientes',
+    });
   });
 });
 
