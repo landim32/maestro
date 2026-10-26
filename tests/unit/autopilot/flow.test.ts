@@ -308,7 +308,7 @@ describe('autopilot flow', () => {
       ),
     );
     expect(out.next.type).toBe('commit');
-    // spec.md gone (an interrupted step stashes its work): the story goes to /speckit.specify again
+    // spec.md gone (removed by hand): the story goes to /speckit.specify again
     s = start(failed, ctx);
     expect(s.next).toMatchObject({ text: '/speckit.specify Login\n\nquero entrar', clear: true });
   });

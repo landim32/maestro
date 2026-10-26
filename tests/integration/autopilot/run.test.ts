@@ -13,7 +13,7 @@ import { systemGit, systemGitCommit } from '../../../src/speckit/git.js';
 import { SpecKitService } from '../../../src/speckit/service.js';
 import { allTools, toolsFor } from '../../../src/tools/registry.js';
 import { discoverSkills } from '../../../src/skills/catalog.js';
-import { jsonlPath } from '../../../src/autopilot/log.js';
+import { interruptedStashName, jsonlPath } from '../../../src/autopilot/log.js';
 import { readRunState } from '../../../src/autopilot/state.js';
 import type { SettingsInput } from '../../../src/config/schema.js';
 import type { Run } from '../../../src/autopilot/types.js';
@@ -323,10 +323,9 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     const s1 = state();
     expect(s1.status).toBe('interrupted');
     expect(s1.stories[0]!.status).toBe('done');
-    // partial work of the interrupted step is stashed, the tree is clean
-    expect(r1.report).toMatch(/git stash "maestro autopilot .*002-despedida plan interrompido"/);
-    expect(repo.git('status', '--porcelain')).toBe('');
-    expect(repo.git('stash', 'list')).toMatch(/002-despedida plan interrompido/);
+    // partial work of the interrupted step stays on disk: nothing is stashed
+    expect(repo.git('stash', 'list')).toBe('');
+    expect(r1.report).not.toMatch(/git stash/);
     // uncommitted changes do not block the resume: they go into the next step's commit
     repo.write('notas.txt', 'ajuste manual\n');
     const stepsBefore = a.model.steps.length;
@@ -357,8 +356,10 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     expect(r1.code).toBe(1);
     expect(state()).toMatchObject({ status: 'interrupted' });
     expect(state().stories[0]).toMatchObject({ feature: '001-saudao', branch: '001-saudao' });
-    expect(repo.git('stash', 'list')).toMatch(/001-saudao specify interrompido/);
-    expect(fs.existsSync(path.join(repo.root, 'specs/001-saudao/spec.md'))).toBe(false);
+    // the partial spec stays on disk, uncommitted, and the report says so
+    expect(repo.git('stash', 'list')).toBe('');
+    expect(fs.existsSync(path.join(repo.root, 'specs/001-saudao/spec.md'))).toBe(true);
+    expect(r1.report).toMatch(/ficaram no disco, sem commit/);
 
     const stepsBefore = a.model.steps.length;
     const r2 = await a.controller.createAutopilot().start(undefined, { resume: true });
@@ -367,8 +368,35 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     const resumed = a.model.steps.slice(stepsBefore);
     expect(resumed[0]).toBe('round');
     expect(resumed).not.toContain('specify');
-    expect(a.progress.some((l) => l.includes('trabalho parcial de specify restaurado'))).toBe(true);
     expect(fs.readdirSync(path.join(repo.root, 'specs'))).toEqual(['001-saudao']);
+    expect(state().status).toBe('done');
+    expect(repo.git('status', '--porcelain')).toBe('');
+  });
+
+  it('a run interrupted by an older version (work in a stash): --resume brings the stash back to disk', async () => {
+    repo.write('historias.md', ONE);
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'stories');
+    const ref: { driver?: ReturnType<SessionController['createAutopilot']> } = {};
+    let once = true;
+    const a = await setup({
+      onSpecWritten: () => {
+        if (once) ref.driver?.cancel();
+        once = false;
+      },
+    });
+    ref.driver = a.controller.createAutopilot();
+    expect((await ref.driver.start('historias.md')).code).toBe(1);
+    // what older versions did on interruption
+    const name = interruptedStashName(state().id, state().stories[0]!, 0, 'specify');
+    repo.git('stash', 'push', '-q', '-u', '-m', name);
+    expect(fs.existsSync(path.join(repo.root, 'specs/001-saudao/spec.md'))).toBe(false);
+
+    const stepsBefore = a.model.steps.length;
+    const r2 = await a.controller.createAutopilot().start(undefined, { resume: true });
+    expect(r2.code).toBe(0);
+    expect(a.progress.some((l) => l.includes('trabalho parcial de specify restaurado'))).toBe(true);
+    expect(a.model.steps.slice(stepsBefore)).not.toContain('specify');
     expect(repo.git('stash', 'list')).toBe('');
     expect(state().status).toBe('done');
   });

@@ -55,6 +55,17 @@ describe('ask_user input schema', () => {
     }
   });
 
+  it('accepts a header over the limit and normalizeQuestions cuts it', () => {
+    const r = askUserInputSchema.safeParse({ questions: [q({ header: 'Conflito grep' })] });
+    expect(r.success).toBe(true);
+    if (r.success) {
+      const header = normalizeQuestions(r.data.questions)[0]!.header;
+      expect(header).toBe('Conflito gr…');
+      expect(header.length).toBe(12);
+    }
+    expect(normalizeQuestions([q({ header: 'Formato' })])[0]!.header).toBe('Formato');
+  });
+
   it.each([
     ['no questions', { questions: [] }, /between 1 and 4 questions/],
     ['five questions', { questions: [q(), q(), q(), q(), q()] }, /between 1 and 4 questions/],
@@ -70,7 +81,6 @@ describe('ask_user input schema', () => {
       },
       /between 2 and 4 options/,
     ],
-    ['long header', { questions: [q({ header: 'ABCDEFGHIJKLM' })] }, /at most 12 characters/],
     ['blank question', { questions: [q({ question: '   ' })] }, /"question" must be a non-empty/],
     [
       'duplicate labels',

@@ -48,6 +48,8 @@ export interface GateSnapshot {
   blocked?: string;
   /** Feature an earlier attempt of this story's specify created (see claimFeature). */
   claimed?: string;
+  /** plan.md differs from the last commit (partial work of an interrupted plan step). */
+  planUncommitted?: boolean;
 }
 
 const TASK_LINE = /^\s*[-*]\s+\[([ xX])\]\s+T\d+/;
@@ -147,7 +149,9 @@ export function evaluateGate(
         ? { kind: 'advance', reason: 'spec.md presente' }
         : { kind: 'stop', reason: 'spec.md não existe' };
     case 'plan':
-      return changed(s.before.plan, a.plan)
+      // A resumed plan may find its plan.md already written (uncommitted) by the interrupted turn.
+      return changed(s.before.plan, a.plan) ||
+        (run.resumed === true && a.plan.exists && s.planUncommitted === true)
         ? { kind: 'advance', reason: 'plan.md criado/alterado' }
         : { kind: 'stop', reason: 'o plan não criou nem alterou plan.md' };
     case 'tasks':

@@ -24,8 +24,10 @@ const optionSchema = z.strictObject({
 
 const questionSchema = z.strictObject({
   question: nonEmpty('"question"').describe('The complete question to ask the user.'),
+  // The limit is only a hint to the model (maxLength in the JSON Schema): a longer header is cut
+  // by normalizeQuestions instead of failing the whole call over a cosmetic tag.
   header: nonEmpty('"header"')
-    .max(MAX_HEADER_LENGTH, `"header" must have at most ${MAX_HEADER_LENGTH} characters`)
+    .meta({ maxLength: MAX_HEADER_LENGTH })
     .describe(`Very short label shown as a tag (max ${MAX_HEADER_LENGTH} chars).`),
   options: z
     .array(optionSchema)
@@ -60,9 +62,19 @@ export const askUserInputSchema = z.strictObject({
 
 export type AskUserInput = z.infer<typeof askUserInputSchema>;
 
-/** Fills the `multiSelect` default so the dialog and the formatter see a complete question. */
+/**
+ * Fills the `multiSelect` default and cuts a header longer than MAX_HEADER_LENGTH, so the dialog
+ * and the formatter see a complete question.
+ */
 export function normalizeQuestions(questions: AskUserInput['questions']): AskUserQuestion[] {
-  return questions.map((q) => ({ ...q, multiSelect: q.multiSelect ?? false }));
+  return questions.map((q) => ({
+    ...q,
+    header:
+      q.header.length > MAX_HEADER_LENGTH
+        ? `${q.header.slice(0, MAX_HEADER_LENGTH - 1).trimEnd()}…`
+        : q.header,
+    multiSelect: q.multiSelect ?? false,
+  }));
 }
 
 export const DECLINED_TEXT = 'User declined to answer the questions.';

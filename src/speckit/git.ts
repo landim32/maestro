@@ -98,9 +98,12 @@ export interface GitCommitPort {
   push(root: string, branch: string): void;
   /** True when `sha` is reachable from `branch`. */
   isAncestor(root: string, sha: string, branch: string): boolean;
-  /** Stashes all changes (incl. untracked) with a message; false when the tree was clean. */
-  stash(root: string, message: string): boolean;
-  /** Re-applies and drops the stash named `message` (clean tree only); false when not applied. */
+  /** True when `rel` differs from HEAD (modified, staged or untracked). */
+  uncommitted(root: string, rel: string): boolean;
+  /**
+   * Re-applies and drops the stash named `message` (clean tree only); false when not applied.
+   * Only for runs interrupted before the partial work stayed on disk, which stashed it.
+   */
   unstash(root: string, message: string): boolean;
 }
 
@@ -127,16 +130,9 @@ export const systemGitCommit: GitCommitPort = {
   },
   isAncestor: (root, sha, branch) =>
     tryRun(root, ['merge-base', '--is-ancestor', sha, branch]) !== undefined,
-  stash: (root, message) => stashAll(root, message),
+  uncommitted: (root, rel) => (tryRun(root, ['status', '--porcelain', '--', rel]) ?? '') !== '',
   unstash: (root, message) => unstashNamed(root, message),
 };
-
-/** Stashes every change (tracked and untracked) with a message; returns false when there was none. */
-export function stashAll(root: string, message: string): boolean {
-  if ((tryRun(root, ['status', '--porcelain']) ?? '') === '') return false;
-  run(root, ['stash', 'push', '-q', '-u', '-m', message]);
-  return true;
-}
 
 /**
  * Re-applies the newest stash whose message is `message` and drops it; only on a clean tree, so
