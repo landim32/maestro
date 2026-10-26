@@ -3,7 +3,6 @@ import { emptyStory } from './types.js';
 import type { Run, Story } from './types.js';
 
 export interface ResumeDeps {
-  isDirty: () => boolean;
   branchExists: (name: string) => boolean;
   isAncestor: (sha: string, branch: string) => boolean;
   isPidAlive: (pid: number) => boolean;
@@ -19,11 +18,8 @@ export function checkResume(
     return { ok: false, error: 'Essa execução já terminou; nada a retomar.' };
   if (run.status === 'active' && run.pid !== deps.ownPid && deps.isPidAlive(run.pid))
     return { ok: false, error: `Já existe uma execução ativa (pid ${run.pid}).` };
-  if (deps.isDirty())
-    return {
-      ok: false,
-      error: 'Há alterações não commitadas; faça commit ou stash antes de retomar o autopiloto.',
-    };
+  // A dirty tree does not block the resume: uncommitted changes stay in place and go into the
+  // next step's commit.
 
   const out: Run = structuredClone(run);
   for (let i = 0; i < out.stories.length; i++) {

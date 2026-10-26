@@ -227,7 +227,6 @@ export class AutopilotDriver {
         saved,
         { hash: inputHash, stories },
         {
-          isDirty: () => git.isDirty(root),
           branchExists: (b) => git.branchExists(root, b),
           isAncestor: (sha, b) => this.deps.gitCommit.isAncestor(root, sha, b),
           isPidAlive,
@@ -237,7 +236,15 @@ export class AutopilotDriver {
       if (!checked.ok) return refuse(checked.error);
       run = checked.run;
       const branch = resumeBranch(run);
-      if (git.currentBranch(root) !== branch) git.checkoutExisting(root, branch);
+      if (git.currentBranch(root) !== branch) {
+        try {
+          git.checkoutExisting(root, branch);
+        } catch {
+          return refuse(
+            `Não foi possível trocar para a branch ${branch}: as alterações não commitadas conflitam com ela.`,
+          );
+        }
+      }
       for (const st of run.stories) {
         if (!st.feature) continue;
         try {

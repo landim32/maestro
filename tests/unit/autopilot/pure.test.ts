@@ -371,7 +371,6 @@ describe('report (contracts/autopilot-cli.md § 3)', () => {
 
 describe('resume checks (contracts/state-file.md § 3)', () => {
   const deps = (over: Partial<Parameters<typeof checkResume>[2]> = {}) => ({
-    isDirty: () => false,
     branchExists: () => true,
     isAncestor: () => true,
     isPidAlive: () => false,
@@ -397,15 +396,12 @@ describe('resume checks (contracts/state-file.md § 3)', () => {
       expect(out.run.pid).toBe(99);
     }
   });
-  it('refuses: live owner, dirty tree, missing branch, rewritten history, edited story, finished run', () => {
+  it('refuses: live owner, missing branch, rewritten history, edited story, finished run', () => {
     const active = { ...interrupted(), status: 'active' as const, pid: 5 };
     expect(checkResume(active, input, deps({ isPidAlive: () => true }))).toMatchObject({
       ok: false,
     });
     expect(checkResume(active, input, deps({ isPidAlive: () => false })).ok).toBe(true);
-    expect(checkResume(interrupted(), input, deps({ isDirty: () => true }))).toMatchObject({
-      ok: false,
-    });
     expect(checkResume(interrupted(), input, deps({ branchExists: () => false }))).toMatchObject({
       ok: false,
     });

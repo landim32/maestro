@@ -15,7 +15,7 @@ Ver data-model.md § 3–5. Um campo desconhecido ou uma versão diferente faz a
 
 1. Ler e validar o estado.
 2. `status` precisa ser `interrupted` ou `stopped`. Se for `active`, ele só é aceito quando o `pid` registrado não está mais vivo, e passa a ser tratado como `interrupted`.
-3. A árvore precisa estar limpa.
+3. A árvore **não** precisa estar limpa. As alterações não commitadas ficam onde estão e entram no commit do próximo passo. Se a troca de branch do item 6 conflitar com elas, a retomada é recusada com `Não foi possível trocar para a branch <branch>: as alterações não commitadas conflitam com ela.`
 4. Para cada história com `branch`, a branch precisa existir e conter o `sha` do último passo concluído (`git merge-base --is-ancestor`).
 5. O hash do arquivo de entrada:
    - igual: tudo segue;

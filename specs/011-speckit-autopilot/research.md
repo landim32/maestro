@@ -113,7 +113,7 @@ Cada decisão segue o formato Decisão / Motivo / Alternativas.
 
 - **Decisão** (revista na implementação): `.specify/autopilot.json`, local e excluído pelo `.git/info/exclude`. Versionar o arquivo deixaria o estado sempre um commit atrás ou a árvore suja. Um passo interrompido vai para um `git stash` nomeado. O arquivo guarda `{ version: 1, id, input, inputHash, baseBranch, status, stories: [{ title, hash, feature?, branch?, steps: { [passo]: { status, sha?, rounds, attempts, ms, tokens } } }] }`.
   - A gravação é atômica (arquivo temporário e `rename`).
-  - Na retomada, o driver confere três coisas: o hash do arquivo de entrada, a existência da branch e do último SHA, e uma árvore limpa. Se o arquivo de histórias mudou, a retomada só segue com as histórias que não começaram, e as alteradas são recusadas com aviso.
+  - Na retomada, o driver confere duas coisas: o hash do arquivo de entrada e a existência da branch e do último SHA. A árvore suja não impede a retomada (revisto depois): as alterações entram no commit do próximo passo. Se o arquivo de histórias mudou, a retomada só segue com as histórias que não começaram, e as alteradas são recusadas com aviso.
   - Uma execução `active` cujo processo morreu é tratada como `interrupted`, porque o estado é gravado por um único processo, e um campo `pid` com o horário identifica a execução viva.
 - **Motivo**: retomar do primeiro passo não concluído com garantia de que o repositório é o mesmo (FR-021, FR-022).
 - **Alternativas**: guardar o estado em `.maestro/`, que é ignorado pelo git, rejeitado porque a retomada se perderia num clone novo.
