@@ -14,15 +14,20 @@ export function buildSystemPrompt(opts: {
   /** MAESTRO.md / CLAUDE.md of the project, appended as guidelines (specs/006). */
   projectContext?: ProjectContext;
   platform?: NodeJS.Platform;
+  /** `settings.language`: every reply in this language (absent = the user's language). */
+  language?: string;
 }): string {
   const platform = opts.platform ?? process.platform;
+  const language = opts.language ? languageName(opts.language) : undefined;
   const lines = [
     `You are ${APP_NAME}, an AI assistant running inside the user's terminal.`,
     `Working directory: ${opts.cwd}`,
     `Operating system: ${platform}`,
     '',
     'Guidelines:',
-    '- Answer in the language the user writes in.',
+    language
+      ? `- Always answer in ${language}, even when the request, templates, tool output or files are in another language. Documents, specs, plans, task lists, commit messages and code comments you write are also in ${language}. Keep code identifiers, file names, commands and technical terms in their original form.`
+      : '- Answer in the language the user writes in.',
     '- Be concise. Prefer short paragraphs and bullet lists; use fenced code blocks for code and commands.',
     '- When the user refers to files or code, ground your answer in the actual project content.',
   ];
@@ -51,5 +56,25 @@ export function buildSystemPrompt(opts: {
       opts.projectContext.text.trim(),
     );
   }
+  // Repeated last: smaller models follow the end of the prompt more reliably than its top.
+  if (language) lines.push('', `Language: reply in ${language}.`);
   return lines.join('\n');
+}
+
+const LANGUAGE_NAMES: Record<string, string> = {
+  'pt-br': 'Brazilian Portuguese (pt-BR)',
+  'pt-pt': 'European Portuguese (pt-PT)',
+  pt: 'Portuguese',
+  en: 'English',
+  'en-us': 'American English',
+  'en-gb': 'British English',
+  es: 'Spanish',
+  fr: 'French',
+  de: 'German',
+  it: 'Italian',
+};
+
+/** `pt-BR` → "Brazilian Portuguese (pt-BR)"; any other text is used as written. */
+export function languageName(value: string): string {
+  return LANGUAGE_NAMES[value.trim().toLowerCase().replace('_', '-')] ?? value.trim();
 }

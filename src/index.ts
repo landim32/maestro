@@ -115,6 +115,7 @@ async function main(argv: string[]): Promise<number> {
       toolsEnabled: hasWorkspaceTools(tools),
       askUser: tools.some((t) => t.name === 'ask_user'),
       projectContext,
+      language: loaded.settings.language,
     }),
     debug: args.debug,
     interactive: !nonInteractive,

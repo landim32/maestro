@@ -246,6 +246,8 @@ export const routesSettingsSchema = z
 export const settingsSchema = z.strictObject({
   _comment: comment,
   activeProvider: providerIdSchema.default(DEFAULTS.activeProvider),
+  /** Language of every reply ("pt-BR", "português"…); absent = the language the user writes in. */
+  language: z.string().trim().min(1).optional(),
   providers: z
     .strictObject({
       claude: claudeProviderSchema.prefault({}),
