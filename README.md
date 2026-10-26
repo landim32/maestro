@@ -171,7 +171,7 @@ maestro -p "/routes"                 # tabela das rotas configuradas
 maestro --version                    # versão do Maestro e do Spec Kit embutido
 ```
 
-A sessão interativa ocupa a tela inteira do terminal (tela alternativa, restaurada ao sair), abre com o banner "Maestro" e formata as respostas em markdown: títulos, listas, negrito, código com destaque de sintaxe e tabelas. A conversa rola dentro da interface: Page Up / Page Down (uma tela), Shift+↑ / Shift+↓ (uma linha), Home / End, e a roda do mouse onde o terminal a reporta. Um indicador à direita mostra a posição. Arrastar o mouse sobre a conversa seleciona e copia o texto (veja "Colar e copiar"). Em `settings.json`, `ui.altScreen` e `ui.mouse` desligam esses recursos; `MAESTRO_NO_ALTSCREEN=1` também desliga a tela alternativa.
+A sessão interativa ocupa a tela inteira do terminal (tela alternativa, restaurada ao sair), abre com o banner "Maestro" e formata as respostas em markdown: títulos, listas, negrito, código com destaque de sintaxe e tabelas. A conversa rola dentro da interface: Page Up / Page Down (uma tela), Shift+↑ / Shift+↓ (uma linha), Home / End, e a roda do mouse onde o terminal a reporta. Um indicador à direita mostra a posição. A rolagem guarda as últimas ~2 000 linhas da conversa; o que fica acima disso sai da tela (uma linha avisa quantos itens), mas continua na conversa que o modelo vê. Assim a interface não fica mais lenta numa sessão longa, como uma execução do autopiloto. Arrastar o mouse sobre a conversa seleciona e copia o texto (veja "Colar e copiar"). Em `settings.json`, `ui.altScreen` e `ui.mouse` desligam esses recursos; `MAESTRO_NO_ALTSCREEN=1` também desliga a tela alternativa.
 
 Na sessão:
 

@@ -11,6 +11,14 @@ import { DiffView } from './DiffView.js';
 /** Diff rows shown under a write in the transcript (contracts/diff-view.md § 4). */
 export const TRANSCRIPT_DIFF_LINES = 40;
 
+/**
+ * Rows of transcript kept rendered (scroll limit). Ink lays out and draws the whole tree on every
+ * frame, clipped part included, so an unbounded transcript makes each keystroke slower (measured
+ * at 100 columns: ~30 ms with 5 answers, ~100 ms with 120, ~630 ms with 240). Older items leave
+ * the screen only: the session history (what the model sees) is untouched.
+ */
+export const TRANSCRIPT_MAX_ROWS = 2000;
+
 type ToolResultPart = Extract<ContentPart, { type: 'tool_result' }>;
 type ToolCallPart = Extract<ContentPart, { type: 'tool_call' }>;
 
@@ -31,6 +39,47 @@ export function textOf(m: Message): string {
     .filter((p): p is Extract<typeof p, { type: 'text' }> => p.type === 'text')
     .map((p) => p.text)
     .join('');
+}
+
+/** Rough height of `text` in rows at `width` columns (wrapping only; markdown spacing ignored). */
+export function textRows(text: string, width: number): number {
+  const w = Math.max(1, width);
+  let rows = 0;
+  for (const line of text.split('\n')) rows += Math.max(1, Math.ceil(stringWidth(line) / w));
+  return rows;
+}
+
+/**
+ * Scroll limit: index of the first item to render so the newest items fit `budget` rows (each
+ * item also takes one row of gap). The newest item is always rendered.
+ */
+export function firstVisible(rows: number[], budget: number): number {
+  let first = rows.length;
+  let left = budget;
+  while (first > 0 && left - (rows[first - 1]! + 1) >= 0) {
+    first--;
+    left -= rows[first]! + 1;
+  }
+  return first === rows.length && first > 0 ? first - 1 : first;
+}
+
+const rowsCache = new WeakMap<Message, { width: number; rows: number }>();
+
+/** Estimated rows of one transcript item (cached per message and width). */
+export function messageRows(m: Message, width: number): number {
+  const hit = rowsCache.get(m);
+  if (hit && hit.width === width) return hit.rows;
+  let rows: number;
+  if (m.role === 'user') rows = textRows(m.display ?? textOf(m), width - 2);
+  else if (m.role === 'assistant') {
+    const text = textOf(m);
+    rows = (m.route && m.route !== 'chat' ? 1 : 0) + (text !== '' ? textRows(text, width - 2) : 0);
+    // `⏺ Label(arg)` + `⎿ summary`; a write's diff can add up to TRANSCRIPT_DIFF_LINES.
+    for (const p of m.content)
+      if (p.type === 'tool_call') rows += p.name === 'write_file' ? 3 + TRANSCRIPT_DIFF_LINES : 2;
+  } else rows = m.content.length;
+  rowsCache.set(m, { width, rows });
+  return rows;
 }
 
 function NoticeLine({ notice, color }: { notice: Notice; color: boolean }) {
@@ -216,7 +265,7 @@ export function MessageList({
   capabilities,
   leading,
 }: MessageListProps) {
-  const items: React.ReactNode[] = [];
+  const entries: Array<{ rows: number; render: () => React.ReactNode }> = [];
   let noticeIdx = 0;
   const sorted = [...notices].sort((a, b) => a.position - b.position || a.id - b.id);
   const color = capabilities.color;
@@ -234,7 +283,10 @@ export function MessageList({
   const flushNotices = (upTo: number) => {
     while (noticeIdx < sorted.length && sorted[noticeIdx]!.position <= upTo) {
       const n = sorted[noticeIdx]!;
-      items.push(<NoticeLine key={`n${n.id}`} notice={n} color={color} />);
+      entries.push({
+        rows: textRows(n.text, width - 2),
+        render: () => <NoticeLine key={`n${n.id}`} notice={n} color={color} />,
+      });
       noticeIdx++;
     }
   };
@@ -251,16 +303,30 @@ export function MessageList({
             .filter((p): p is ToolCallPart => p.type === 'tool_call')
             .map((c) => resultsById.get(c.callId))
         : NO_RESULTS;
-    items.push(
-      <MessageItem key={m.id} message={m} width={width} color={color} results={results} />,
-    );
+    entries.push({
+      rows: messageRows(m, width),
+      render: () => (
+        <MessageItem key={m.id} message={m} width={width} color={color} results={results} />
+      ),
+    });
   });
   flushNotices(Number.MAX_SAFE_INTEGER);
 
+  const first = firstVisible(
+    entries.map((e) => e.rows),
+    TRANSCRIPT_MAX_ROWS - (generating ? textRows(partialText, width - 2) : 0),
+  );
+
   return (
     <Box flexDirection="column" paddingX={1} gap={1} width={width + 2}>
-      {leading}
-      {items}
+      {first > 0 ? (
+        <Text dimColor>
+          {`↑ ${first} ${first === 1 ? 'item anterior' : 'itens anteriores'} fora da rolagem (o modelo ainda vê a conversa inteira; /clear limpa)`}
+        </Text>
+      ) : (
+        leading
+      )}
+      {entries.slice(first).map((e) => e.render())}
       {generating && partialText !== '' && (
         <AssistantText text={partialText} width={width} color={color} streaming />
       )}
