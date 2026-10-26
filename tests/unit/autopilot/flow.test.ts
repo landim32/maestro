@@ -2,11 +2,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   commitMessage,
+  claimFeature,
   onAnswer,
+  onDecisionFailed,
   onCommitted,
   onPublished,
   onTurn,
   onVerify,
+  resumeSpecifyText,
   start,
 } from '../../../src/autopilot/flow.js';
 import type { FlowContext, Step, TurnOutcome } from '../../../src/autopilot/flow.js';
@@ -268,6 +271,46 @@ describe('autopilot flow', () => {
     const s = start(r, ctx);
     expect(s.next).toEqual({ type: 'turn', text: '/speckit.clarify', clear: true });
     expect(s.state.run.stories[0]!.steps.clarify).toMatchObject({ status: 'running', attempts: 0 });
+  });
+
+  it('resumed specify continues the feature its first attempt created, never resends the story', () => {
+    // first attempt: the feature appears on disk, then the decider fails → the story keeps it
+    let s = start(run(), ctx);
+    const claimed = claimFeature(s.state, {
+      before: view({ featureDirs: ['005-old'] }),
+      after: view({ featureDirs: ['005-old', '006-login'], feature: '006-login' }),
+      branch: '006-login',
+    });
+    expect(claimed === s.state).toBe(false);
+    expect(claimed.run.stories[0]).toMatchObject({ feature: '006-login', branch: '006-login' });
+    // a feature that already existed before the turn (e.g. feature.json of an older one) is not taken
+    expect(
+      claimFeature(s.state, {
+        before: view({ featureDirs: ['002-old'] }),
+        after: view({ featureDirs: ['002-old'], feature: '002-old' }),
+      }).run.stories[0]!.feature,
+    ).toBeUndefined();
+    const failed = onDecisionFailed(claimed, 'o decisor falhou').state.run;
+    s = start(failed, { ...ctx, specOnDisk: (f) => f === '006-login' });
+    expect(s.next).toEqual({ type: 'turn', text: resumeSpecifyText('006-login'), clear: false });
+    expect(s.state.run.stories[0]!.steps.specify).toMatchObject({
+      status: 'running',
+      resumed: true,
+    });
+    // the gate keeps that feature although it existed before the turn
+    const out = onTurn(
+      s.state,
+      ctx,
+      turn(
+        { feature: '006-login', featureDirs: ['006-login'], spec: { exists: true, hash: 'h' } },
+        { branch: '006-login' },
+        { feature: '006-login', featureDirs: ['006-login'] },
+      ),
+    );
+    expect(out.next.type).toBe('commit');
+    // spec.md gone (an interrupted step stashes its work): the story goes to /speckit.specify again
+    s = start(failed, ctx);
+    expect(s.next).toMatchObject({ text: '/speckit.specify Login\n\nquero entrar', clear: true });
   });
 
   it('commit message uses the configured prefix and the feature number', () => {

@@ -53,6 +53,10 @@ const say = (text: string, out = 20): ProviderEvent[] => [
 ];
 
 export interface ScriptOptions {
+  /** Called once the specify turn has written spec.md, before it ends (e.g. to cancel there). */
+  onSpecWritten?: () => void;
+  /** Fixed answer of the decider to every question (e.g. one that is not valid JSON). */
+  deciderAnswer?: string;
   /** Text the implement step ends with on its first round (e.g. a "(yes/no)" question). */
   implementQuestion?: string;
   /** Analyze report of each analyze turn, in order (default: no CRITICAL). */
@@ -83,12 +87,13 @@ export function speckitModel(opts: ScriptOptions = {}) {
         .at(-1)!
         .content.map((p) => (p.type === 'text' ? p.text : ''))
         .join('');
+      if (opts.deciderAnswer !== undefined) return say(opts.deciderAnswer);
       if (prompt.includes('O assistente perguntou'))
         return say(
           '{"answer": "yes", "rationale": "A história pede para seguir com a implementação."}',
         );
-      const rec = /- ([^:\n]+): [^\n]*\[recomendada\]/.exec(prompt)?.[1] ?? 'A';
-      return say(`{"choice": "${rec}", "rationale": "É a opção recomendada e a mais simples."}`);
+      const rec = /^(\d+)\. [^\n]*\[recomendada\]$/m.exec(prompt)?.[1] ?? '1';
+      return say(`{"choice": ${rec}, "rationale": "É a opção recomendada e a mais simples."}`);
     }
     const msgs = req.messages;
     const lastUser = [...msgs].reverse().find((m) => m.role === 'user')!;
@@ -128,6 +133,7 @@ export function speckitModel(opts: ScriptOptions = {}) {
             content: `# Spec ${feature}\n`,
           });
         }
+        opts.onSpecWritten?.();
         return say('spec pronta');
       }
       case 'clarify':

@@ -174,6 +174,32 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     );
   });
 
+  it('a decider failure stops the story and logs the question and the answers', async () => {
+    repo.write('historias.md', ONE);
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'stories');
+    const { controller } = await setup({
+      deciderAnswer: 'não sei',
+    });
+    const r = await controller.createAutopilot().start('historias.md');
+    expect(r.code).toBe(1);
+    expect(r.report).toMatch(/parou em clarify: o decisor falhou: resposta sem JSON/);
+    const events = fs
+      .readFileSync(jsonlPath(repo.root, state().id), 'utf8')
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>);
+    expect(events.find((e) => e['event'] === 'decision.failed')).toMatchObject({
+      story: 1,
+      feature: '001-saudao',
+      step: 'clarify',
+      reason: 'resposta sem JSON',
+      question: expect.any(String),
+      options: expect.arrayContaining([expect.any(String)]),
+      answers: ['não sei', 'não sei'],
+    });
+  });
+
   it('refuses to start: dirty tree, missing file, no stories', async () => {
     const { controller } = await setup();
     repo.write('historias.md', ONE);
@@ -312,6 +338,39 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     expect(state().status).toBe('done');
     expect(repo.git('ls-files', 'notas.txt')).toBe('notas.txt');
     expect(repo.git('status', '--porcelain')).toBe('');
+  });
+
+  it('Esc in the middle of specify, then --resume: the spec comes back and the same feature goes on', async () => {
+    repo.write('historias.md', ONE);
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'stories');
+    const ref: { driver?: ReturnType<SessionController['createAutopilot']> } = {};
+    let once = true;
+    const a = await setup({
+      onSpecWritten: () => {
+        if (once) ref.driver?.cancel();
+        once = false;
+      },
+    });
+    ref.driver = a.controller.createAutopilot();
+    const r1 = await ref.driver.start('historias.md');
+    expect(r1.code).toBe(1);
+    expect(state()).toMatchObject({ status: 'interrupted' });
+    expect(state().stories[0]).toMatchObject({ feature: '001-saudao', branch: '001-saudao' });
+    expect(repo.git('stash', 'list')).toMatch(/001-saudao specify interrompido/);
+    expect(fs.existsSync(path.join(repo.root, 'specs/001-saudao/spec.md'))).toBe(false);
+
+    const stepsBefore = a.model.steps.length;
+    const r2 = await a.controller.createAutopilot().start(undefined, { resume: true });
+    expect(r2.code).toBe(0);
+    // the first turn continues the spec (no /speckit.specify, so no second feature)
+    const resumed = a.model.steps.slice(stepsBefore);
+    expect(resumed[0]).toBe('round');
+    expect(resumed).not.toContain('specify');
+    expect(a.progress.some((l) => l.includes('trabalho parcial de specify restaurado'))).toBe(true);
+    expect(fs.readdirSync(path.join(repo.root, 'specs'))).toEqual(['001-saudao']);
+    expect(repo.git('stash', 'list')).toBe('');
+    expect(state().status).toBe('done');
   });
 
   it('push on: each story is pushed and gets a PR whose base is the previous story; merge only with merge', async () => {

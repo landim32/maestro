@@ -46,6 +46,8 @@ export interface GateSnapshot {
   errorCategory?: string;
   /** Preflight refusal of a Spec Kit command (CommandBlocked). */
   blocked?: string;
+  /** Feature an earlier attempt of this story's specify created (see claimFeature). */
+  claimed?: string;
 }
 
 const TASK_LINE = /^\s*[-*]\s+\[([ xX])\]\s+T\d+/;
@@ -106,7 +108,7 @@ export function verifyFixPrompt(command: string, output: string): string {
  */
 export function evaluateGate(
   s: GateSnapshot,
-  run: Pick<StepRun, 'answers' | 'attempts'>,
+  run: Pick<StepRun, 'answers' | 'attempts' | 'resumed'>,
 ): GateVerdict {
   if (s.stopReason === 'cancelled')
     return { kind: 'interrupted', reason: 'cancelado pelo usuário' };
@@ -129,7 +131,9 @@ export function evaluateGate(
     case 'specify': {
       const feature = a.feature;
       const isNew = feature !== undefined && !s.before.featureDirs.includes(feature);
-      if (!isNew || !a.spec.exists)
+      // A resumed specify finds the feature its first attempt created.
+      const kept = run.resumed === true && feature !== undefined && feature === s.claimed;
+      if (!(isNew || kept) || !a.spec.exists)
         return { kind: 'stop', reason: 'o specify não criou uma feature nova com spec.md' };
       if (s.hasGit && s.branch !== feature)
         return {

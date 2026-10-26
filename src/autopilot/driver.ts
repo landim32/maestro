@@ -14,8 +14,9 @@ import { resolveInsideCwd } from '../tools/sandbox.js';
 import { runCommandTool } from '../tools/runCommand.js';
 import { formatElapsed } from '../session/activity.js';
 import { asAskUserHandler, createDecider, DeciderError } from './decider.js';
-import type { Decider, DecisionContext } from './decider.js';
+import type { Decider, DeciderFailure, DecisionContext } from './decider.js';
 import {
+  claimFeature,
   onAnswer,
   onCancelled,
   onCommitted,
@@ -29,7 +30,13 @@ import type { FlowContext, NextAction, Step } from './flow.js';
 import { countTasks, openTaskLines } from './gates.js';
 import type { ArtifactInfo, DiskView } from './gates.js';
 import type { ToolResult } from '../tools/types.js';
-import { appendJsonl, decisionsPath, jsonlPath, rewriteProtected } from './log.js';
+import {
+  appendJsonl,
+  decisionsPath,
+  interruptedStashName,
+  jsonlPath,
+  rewriteProtected,
+} from './log.js';
 import type { RemotePort } from './remote.js';
 import { formatReport } from './report.js';
 import { checkResume, resumeBranch } from './resume.js';
@@ -279,6 +286,15 @@ export class AutopilotDriver {
           );
         }
       }
+      // The interrupted step's partial work comes back from its stash: the step continues it.
+      const si = run.stories.findIndex((s) => s.status !== 'done');
+      const story = run.stories[si];
+      const halted = story && STEPS.find((x) => story.steps[x].status === 'interrupted');
+      if (story && halted) {
+        const name = interruptedStashName(run.id, story, si, halted);
+        if (this.deps.gitCommit.unstash(root, name))
+          this.progress(`autopiloto: trabalho parcial de ${halted} restaurado do stash "${name}"`);
+      }
       for (const st of run.stories) {
         if (!st.feature) continue;
         try {
@@ -312,7 +328,9 @@ export class AutopilotDriver {
     const prevCreateBranch = specKit.settings.createBranch;
     (specKit.settings as { createBranch: boolean }).createBranch = true;
 
-    const ctx = (): FlowContext => ({ stories, settings, now: this.now() });
+    const specOnDisk = (feature: string) =>
+      fs.existsSync(path.join(root, 'specs', feature, 'spec.md'));
+    const ctx = (): FlowContext => ({ stories, settings, now: this.now(), specOnDisk });
     let step = start(run, ctx());
     const decider = this.makeDecider(() => step, stories, root);
     const restore = this.ctl.runOverrides({
@@ -324,7 +342,10 @@ export class AutopilotDriver {
         decider,
         () => this.decisionContext(step, stories, root),
         (d) => this.record(root, step.state.run.id, d),
-        (reason) => (this.askFailure = reason),
+        (reason, detail) => {
+          this.askFailure = reason;
+          this.decisionFailed(root, step, reason, detail);
+        },
       ),
       onToolResult: (_name, result) => this.skillEvent(root, step, result),
     });
@@ -372,7 +393,7 @@ export class AutopilotDriver {
     let stashed: string | undefined;
     if (final.status === 'interrupted') {
       const st = final.stories[step.state.story];
-      const msg = `maestro autopilot ${final.id}: ${st?.feature ?? `história ${step.state.story + 1}`} ${step.state.step} interrompido`;
+      const msg = interruptedStashName(final.id, st ?? {}, step.state.story, step.state.step);
       try {
         if (this.deps.gitCommit.stash(root, msg)) stashed = msg;
       } catch {
@@ -449,7 +470,12 @@ export class AutopilotDriver {
         // Waiting for a provider rate limit does not count against the story's time cap.
         const ms = Math.max(0, this.now() - t0 - this.ctl.lastRetryWaitMs);
         const after = this.disk(root);
-        if (this.askFailure) return onDecisionFailed(st, this.askFailure);
+        const claimed = claimFeature(st, {
+          before,
+          after,
+          branch: this.deps.git.currentBranch(root),
+        });
+        if (this.askFailure) return onDecisionFailed(claimed, this.askFailure);
         const blocked =
           result === undefined
             ? this.ctl.lastCommandBlocked
@@ -457,7 +483,7 @@ export class AutopilotDriver {
                 'comando bloqueado')
               : 'o turno não foi executado'
             : undefined;
-        const out = onTurn(st, env.ctx(), {
+        const out = onTurn(claimed, env.ctx(), {
           snapshot: {
             step: st.step === 'verify' ? 'implement' : st.step,
             before,
@@ -484,7 +510,14 @@ export class AutopilotDriver {
           this.record(root, st.run.id, d);
           return onAnswer(st, String(d.choice));
         } catch (err) {
-          return onDecisionFailed(st, err instanceof DeciderError ? err.message : String(err));
+          const reason = err instanceof DeciderError ? err.message : String(err);
+          this.decisionFailed(
+            root,
+            step,
+            reason,
+            err instanceof DeciderError ? err.detail : undefined,
+          );
+          return onDecisionFailed(st, reason);
         }
       }
       case 'verify': {
@@ -602,6 +635,19 @@ export class AutopilotDriver {
       }
     }
     return { storyTitle: story.title, storyBody: story.body, step: s.step, spec };
+  }
+
+  /** A decider failure goes to the run log with what was asked and answered (diagnosis). */
+  private decisionFailed(root: string, step: Step, reason: string, detail?: DeciderFailure): void {
+    const st = step.state;
+    appendJsonl(root, st.run.id, {
+      event: 'decision.failed',
+      story: st.story + 1,
+      feature: st.run.stories[st.story]?.feature,
+      step: st.step,
+      reason,
+      ...detail,
+    });
   }
 
   private record(root: string, runId: string, d: Decision): void {

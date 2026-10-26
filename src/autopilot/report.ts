@@ -83,7 +83,7 @@ export function formatReport(
   lines.push(`Registro: ${o.jsonl}`);
   if (o.stashed)
     lines.push(
-      `Alterações parciais do passo interrompido: git stash "${o.stashed}" (o passo recomeça do zero na retomada)`,
+      `Alterações parciais do passo interrompido: git stash "${o.stashed}" (a retomada o devolve ao disco e continua o passo)`,
     );
   if (run.status === 'interrupted' || run.status === 'stopped')
     lines.push(`Retomar: /autopilot --resume   (ou maestro -p --autopilot ${run.input} --resume)`);

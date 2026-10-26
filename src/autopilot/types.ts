@@ -34,6 +34,8 @@ export interface StepRun {
   answers: number;
   /** A fix turn was sent; the next turn re-runs the check (analyze) or the verification. */
   fixing?: boolean;
+  /** Restarted by a resume: part of its work may already be on disk. */
+  resumed?: boolean;
   sha?: string;
   ms: number;
   tokens: number;

@@ -13,6 +13,7 @@ const stepRunSchema = z.strictObject({
   attempts: z.number().int().min(0),
   answers: z.number().int().min(0),
   fixing: z.boolean().optional(),
+  resumed: z.boolean().optional(),
   sha: z.string().optional(),
   ms: z.number().min(0),
   tokens: z.number().min(0),

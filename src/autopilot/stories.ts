@@ -34,14 +34,25 @@ export function looksLikePath(text: string): boolean {
 }
 
 export const PROMPT_TITLE_MAX = 72;
+const PASTE_TAG = /^<\/?pasted-text(?:\s[^>]*)?>$/;
+/** A line that is only a tag (`<file path="…">`): never the title. */
+const TAG_LINE = /^<\/?[a-z][\w-]*(?:\s[^>]*)?>$/i;
 
 /**
  * Stories file for `/autopilot <prompt>`: always ONE story, titled by the prompt's first line.
- * The prompt's own "#"/"##" headings become "###" so they stay inside that story.
+ * The prompt's own "#"/"##" headings become "###" so they stay inside that story, and the
+ * wrapper of pasted text (`<pasted-text …>`, from the interactive prompt) is dropped.
  */
 export function promptStoriesFile(prompt: string): string {
-  const text = prompt.replace(/\r\n/g, '\n').trim();
-  const first = (text.split('\n').find((l) => l.trim() !== '') ?? '').replace(/^#+\s*/, '').trim();
+  const text = prompt
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .filter((l) => !PASTE_TAG.test(l.trim()))
+    .join('\n')
+    .trim();
+  const first = (text.split('\n').find((l) => l.trim() !== '' && !TAG_LINE.test(l.trim())) ?? '')
+    .replace(/^#+\s*/, '')
+    .trim();
   const title =
     first.length > PROMPT_TITLE_MAX ? `${first.slice(0, PROMPT_TITLE_MAX - 1).trimEnd()}…` : first;
   return `## ${title}\n\n${text.replace(/^#{1,2}(?=\s)/gm, '###')}\n`;
