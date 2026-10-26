@@ -13,6 +13,10 @@ export interface ParsedArgs {
   model?: string;
   /** `--route` (specs/008): forced route for a `-p` request. */
   route?: string;
+  /** `--autopilot <file>` (specs/011): run the stories file through the Spec Kit, non-interactive. */
+  autopilot?: string;
+  /** `--resume` with --autopilot: continue the interrupted or stopped run. */
+  resume?: boolean;
   config?: string;
   tools: boolean;
   color: boolean;
@@ -48,6 +52,15 @@ function build(argv: string[]) {
     .option('route', {
       type: 'string',
       describe: 'Route (provider/model) for this -p request, e.g. github or speckit.plan.',
+    })
+    .option('autopilot', {
+      type: 'string',
+      describe:
+        'Run every story of the file through the Spec Kit without interaction (non-interactive).',
+    })
+    .option('resume', {
+      type: 'boolean',
+      describe: 'With --autopilot: resume the interrupted or stopped run.',
     })
     .option('config', { type: 'string', describe: 'Path to the global settings.json.' })
     .option('tools', {
@@ -114,15 +127,30 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
       `Unexpected argument: ${positional.join(' ')}. Use -p "<prompt>" to pass a prompt.`,
     );
   }
-  if (parsed.prompt !== undefined && parsed.prompt !== '-' && parsed.prompt.trim() === '') {
+  const autopilot = parsed.autopilot as string | undefined;
+  if (parsed.resume && autopilot === undefined)
+    throw new UsageError('--resume só vale com --autopilot <arquivo>.');
+  if (autopilot !== undefined) {
+    // `-p --autopilot x` is accepted (the -p is then empty); a real prompt is not.
+    if (parsed.prompt !== undefined && parsed.prompt.trim() !== '')
+      throw new UsageError('--autopilot não pode ser combinado com um prompt (-p "…").');
+    if (parsed.route !== undefined)
+      throw new UsageError(
+        '--autopilot não pode ser combinado com --route (cada passo usa a sua rota).',
+      );
+    if (autopilot.trim() === '' && !parsed.resume)
+      throw new UsageError('--autopilot precisa do arquivo de histórias.');
+  } else if (parsed.prompt !== undefined && parsed.prompt !== '-' && parsed.prompt.trim() === '') {
     throw new UsageError('--prompt must not be empty.');
   }
   return {
     action: 'run',
-    prompt: parsed.prompt,
+    prompt: autopilot !== undefined ? undefined : parsed.prompt,
     provider: parsed.provider as ProviderId | undefined,
     model: parsed.model,
     route: parsed.route,
+    autopilot,
+    resume: parsed.resume || undefined,
     config: parsed.config,
     tools: parsed.tools,
     color: parsed.color,

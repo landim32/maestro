@@ -38,6 +38,8 @@ export interface TurnCallbacks {
   onToolEnd?: (name: string, result: ToolResult) => void;
   /** Every `usage` event as it arrives (specs/009 research R4: live token count). */
   onUsage?: (inputTokens: number, outputTokens: number) => void;
+  /** The provider limited the rate: the partial reply is discarded and the request is retried. */
+  onRetry?: (waitMs: number, attempt: number) => void;
 }
 
 export interface TurnOptions {
@@ -57,6 +59,57 @@ export interface TurnOptions {
   overrides?: ProviderRequest['overrides'];
   /** Route name recorded on the assistant messages (absent = chat). */
   route?: string;
+  /** Test seam: waits between rate-limit retries (resolves early when the turn is cancelled). */
+  sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+}
+
+/** Longest wait between rate-limit retries without a Retry-After from the provider. */
+export const MAX_BACKOFF_MS = 5 * 60_000;
+const BASE_BACKOFF_MS = 5_000;
+
+export function backoffMs(attempt: number): number {
+  return Math.min(MAX_BACKOFF_MS, BASE_BACKOFF_MS * 2 ** Math.max(0, attempt - 1));
+}
+
+function defaultSleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    if (signal.aborted) return resolve();
+    const t = setTimeout(done, ms);
+    function done() {
+      clearTimeout(t);
+      signal.removeEventListener('abort', done);
+      resolve();
+    }
+    signal.addEventListener('abort', done, { once: true });
+  });
+}
+
+const waitText = (ms: number) => {
+  const s = Math.ceil(ms / 1000);
+  return s < 60 ? `${s}s` : `${Math.floor(s / 60)}m ${String(s % 60).padStart(2, '0')}s`;
+};
+
+/**
+ * The provider refused because of its rate/usage limit: wait (the provider's Retry-After or an
+ * exponential backoff capped at MAX_BACKOFF_MS) and let the caller retry the same request. The
+ * turn is never ended by a rate limit; only a cancellation stops the wait. Returns false when
+ * the turn was cancelled during the wait.
+ */
+async function waitForRateLimit(
+  err: MaestroError,
+  attempt: number,
+  signal: AbortSignal,
+  opts: TurnOptions,
+  cb: TurnCallbacks,
+): Promise<boolean> {
+  const ms = err.retryAfterMs ?? backoffMs(attempt);
+  cb.onRetry?.(ms, attempt);
+  cb.onNotice?.(
+    `limite de taxa do provedor (${err.message}); aguardando ${waitText(ms)} e tentando de novo (tentativa ${attempt})`,
+    'warn',
+  );
+  await (opts.sleep ?? defaultSleep)(ms, signal);
+  return !signal.aborted;
 }
 
 export interface TurnResult {
@@ -277,27 +330,39 @@ async function runProviderDrivenTurn(
   };
 
   try {
-    const collected = await collect(
-      provider.stream({
-        messages: [...session.history],
-        system: opts.system,
-        tools: opts.tools,
-        model,
-        overrides: opts.overrides,
-        signal: st.ac.signal,
-        runTool,
-      }),
-      {
-        ...cb,
-        onDelta: (t) => {
-          pending += t;
-          fullText += t;
-          cb.onDelta?.(t);
+    let rateAttempts = 0;
+    let collected: Collected;
+    for (;;) {
+      const textBefore = fullText;
+      collected = await collect(
+        provider.stream({
+          messages: [...session.history],
+          system: opts.system,
+          tools: opts.tools,
+          model,
+          overrides: opts.overrides,
+          signal: st.ac.signal,
+          runTool,
+        }),
+        {
+          ...cb,
+          onDelta: (t) => {
+            pending += t;
+            fullText += t;
+            cb.onDelta?.(t);
+          },
         },
-      },
-      st.usage,
-    );
-    await queue;
+        st.usage,
+      );
+      await queue;
+      if (collected.error?.category !== 'rate_limit' || st.ac.signal.aborted) break;
+      // Tool calls already ran and are in the history; only the unflushed text is dropped.
+      pending = '';
+      fullText = textBefore;
+      rateAttempts += 1;
+      if (!(await waitForRateLimit(collected.error, rateAttempts, st.ac.signal, opts, cb)))
+        return { stopReason: 'cancelled', text: fullText, usage: st.usage, toolIterations: calls };
+    }
 
     if (collected.error) {
       if (pending)
@@ -382,11 +447,12 @@ export async function runTurn(
       usage,
       toolMap,
       toolCtx,
-      maxCalls: maxIter * CALLS_PER_ITERATION,
+      maxCalls: maxIter > 0 ? maxIter * CALLS_PER_ITERATION : Number.POSITIVE_INFINITY,
     });
   }
   let iterations = 0;
   let fullText = '';
+  let rateAttempts = 0;
   // Route model (specs/008) or the session override (--model / `/model claude x`).
   const model = opts.model ?? session.modelOverride;
 
@@ -404,6 +470,13 @@ export async function runTurn(
         cb,
         usage,
       );
+      if (collected.error?.category === 'rate_limit' && !ac.signal.aborted) {
+        // The partial reply is dropped; the same request is sent again after the wait.
+        rateAttempts += 1;
+        if (await waitForRateLimit(collected.error, rateAttempts, ac.signal, opts, cb)) continue;
+        return { stopReason: 'cancelled', text: fullText, usage, toolIterations: iterations };
+      }
+      rateAttempts = 0;
       fullText += collected.text;
 
       if (collected.error) {
@@ -450,7 +523,7 @@ export async function runTurn(
 
         if (ac.signal.aborted)
           return { stopReason: 'cancelled', text: fullText, usage, toolIterations: iterations };
-        if (iterations >= maxIter) {
+        if (maxIter > 0 && iterations >= maxIter) {
           cb.onNotice?.(`stopped after ${maxIter} tool iterations in one turn`, 'warn');
           return { stopReason: 'end_turn', text: fullText, usage, toolIterations: iterations };
         }

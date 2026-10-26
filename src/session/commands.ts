@@ -5,6 +5,13 @@ import { APPROVAL_MODES, approvalModeInfo, parseApprovalMode } from '../tools/ap
 import { routeNamesText } from '../routes/catalog.js';
 import type { RouteEntry } from '../routes/catalog.js';
 import type { SessionController } from './controller.js';
+import { statusText } from '../autopilot/report.js';
+import { readRunState } from '../autopilot/state.js';
+import { findSpecifyRoot } from '../speckit/feature.js';
+
+function autopilotStatusText(cwd: string): string {
+  return statusText(readRunState(findSpecifyRoot(cwd)));
+}
 
 export type { PromptTurn };
 
@@ -279,6 +286,31 @@ const model: SlashCommand = {
   },
 };
 
+/** `/autopilot` (specs/011 contracts/autopilot-cli.md § 1): a local command, the turns are the steps'. */
+const autopilot: SlashCommand = {
+  name: 'autopilot',
+  usage: '/autopilot <arquivo> [--resume] | --status',
+  description: 'Executa as histórias do arquivo por todo o Spec Kit, sem interação.',
+  async run(ctl, args) {
+    if (ctl.session.state !== 'idle' || ctl.autopilotStatus) {
+      ctl.notice('Aguarde a resposta (ou a execução do autopiloto) terminar.', 'warn');
+      return;
+    }
+    if (args.includes('--status')) {
+      ctl.notice(autopilotStatusText(ctl.session.cwd), 'info');
+      return;
+    }
+    const resume = args.includes('--resume');
+    const file = args.find((a) => !a.startsWith('--'));
+    if (!file && !resume) {
+      ctl.notice('Uso: /autopilot <arquivo de histórias> [--resume] · /autopilot --status', 'warn');
+      return;
+    }
+    const result = await ctl.createAutopilot().start(file, { resume });
+    ctl.notice(result.report, result.code === 0 ? 'info' : 'warn');
+  },
+};
+
 export const DEFAULT_COMMANDS: SlashCommand[] = [
   help,
   auth,
@@ -287,6 +319,7 @@ export const DEFAULT_COMMANDS: SlashCommand[] = [
   ask,
   approvalMode,
   mouse,
+  autopilot,
   clear,
   exit,
 ];

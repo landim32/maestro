@@ -66,7 +66,7 @@ async function main(argv: string[]): Promise<number> {
   // Loaded lazily: registering providers pulls in both SDKs, which --version/--help never need.
   const { listStatuses } = await import('./providers/index.js');
   const statuses = listStatuses(ctx);
-  const nonInteractive = args.prompt !== undefined;
+  const nonInteractive = args.prompt !== undefined || args.autopilot !== undefined;
   const interactive = !nonInteractive && isInteractive();
 
   if (loaded.created) process.stderr.write(firstRunMessage(loaded.globalPath, statuses) + '\n\n');
@@ -145,6 +145,14 @@ async function main(argv: string[]): Promise<number> {
         );
         return EXIT.USAGE;
       }
+    }
+    if (args.autopilot !== undefined) {
+      const { runAutopilotNonInteractive } = await import('./cli/nonInteractive.js');
+      return runAutopilotNonInteractive({
+        controller,
+        file: args.autopilot.trim() || undefined,
+        resume: args.resume,
+      });
     }
     const { runNonInteractive } = await import('./cli/nonInteractive.js');
     return runNonInteractive({ controller, prompt: args.prompt!, route: args.route });

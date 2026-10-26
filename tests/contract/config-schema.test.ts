@@ -35,7 +35,7 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
       enabled: true,
       commandTimeoutMs: 60000,
       maxOutputChars: 20000,
-      maxToolIterations: 50,
+      maxToolIterations: 0,
       approvalMode: 'default',
     });
     expect(r.ui).toEqual({
@@ -185,7 +185,9 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     );
     expect(issuesOf({ tools: { commandTimeoutMs: 10 } })[0]).toMatch(/^tools\.commandTimeoutMs: /);
     expect(issuesOf({ tools: { maxOutputChars: 10 } })[0]).toMatch(/^tools\.maxOutputChars: /);
-    expect(issuesOf({ tools: { maxToolIterations: 0 } })[0]).toMatch(/^tools\.maxToolIterations: /);
+    expect(issuesOf({ tools: { maxToolIterations: -1 } })[0]).toMatch(
+      /^tools\.maxToolIterations: /,
+    );
     expect(issuesOf({ tools: { maxToolIterations: 2.5 } })[0]).toMatch(
       /^tools\.maxToolIterations: /,
     );

@@ -49,10 +49,17 @@ export const DEFAULTS = {
     enabled: true,
     commandTimeoutMs: 60_000,
     maxOutputChars: 20_000,
-    /** Model rounds with tool calls per turn (Claude Code: × 5 calls). Agentic commands such as
-     *  /speckit.implement need dozens of actions. */
-    maxToolIterations: 50,
+    /** Model rounds with tool calls per turn (Claude Code: × 5 calls); 0 = no limit (default),
+     *  like Claude Code, qwen-code and gemini-cli. */
+    maxToolIterations: 0,
     approvalMode: 'default' as ApprovalMode,
+  },
+  /** Autopilot (specs/011): per-story limits and verification. */
+  autopilot: {
+    verifyMaxAttempts: 3,
+    verifyTimeoutMs: 600_000,
+    turns: 60,
+    minutes: 120,
   },
   ui: {
     /** Pastes longer than this (lines) collapse into a marker (specs/007 research R10). */
@@ -104,7 +111,7 @@ export const INITIAL_SETTINGS = {
   },
   tools: {
     _comment:
-      "approvalMode: 'default' (ask before every edit and command), 'auto-edit' (edits run, commands ask), 'auto' (only destructive commands ask), 'yolo' (never ask). Tab cycles it for the session. maxToolIterations: model rounds with tool calls per turn (claude-code: 5 calls each).",
+      "approvalMode: 'default' (ask before every edit and command), 'auto-edit' (edits run, commands ask), 'auto' (only destructive commands ask), 'yolo' (never ask). Tab cycles it for the session. maxToolIterations: model rounds with tool calls per turn, 0 = no limit (claude-code: 5 calls each).",
     enabled: DEFAULTS.tools.enabled,
     commandTimeoutMs: DEFAULTS.tools.commandTimeoutMs,
     maxOutputChars: DEFAULTS.tools.maxOutputChars,

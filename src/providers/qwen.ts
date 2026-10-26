@@ -3,7 +3,7 @@ import OpenAI from 'openai';
 import { z } from 'zod';
 import { resolveQwenBaseUrl } from '../config/defaults.js';
 import type { ToolDefinition } from '../tools/types.js';
-import { MaestroError, sanitizeCause } from '../utils/errors.js';
+import { MaestroError, retryAfterFrom, sanitizeCause } from '../utils/errors.js';
 import { redact } from '../utils/mask.js';
 import { createAnthropicErrorMapper, streamAnthropicProtocol } from './anthropicProtocol.js';
 import { CREDENTIAL_HINTS, describeProvider, DISPLAY_NAMES } from './status.js';
@@ -112,6 +112,7 @@ export function mapOpenAIError(err: unknown, ctx: ProviderContext): MaestroError
       ...base,
       category: 'rate_limit',
       message: 'too many requests — wait a moment and retry',
+      retryAfterMs: retryAfterFrom(err),
     });
   }
   if (err instanceof OpenAI.APIConnectionError) {

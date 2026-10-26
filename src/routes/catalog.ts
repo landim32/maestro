@@ -9,6 +9,8 @@ import type { PromptTurn } from '../speckit/prompt.js';
 
 export const PURPOSE_ROUTES = ['chat', 'github', 'infra'] as const;
 export type PurposeRoute = (typeof PURPOSE_ROUTES)[number];
+/** Built-in routes used by Maestro itself; listed in /routes but without a `/<route>` shortcut. */
+export const SYSTEM_ROUTES = ['autopilot.decide'] as const;
 
 /** Short guidance appended to the system prompt of a turn on these routes. */
 export const ROUTE_GUIDANCE: Record<'github' | 'infra', string> = {
@@ -144,7 +146,8 @@ export function routeEntries(input: RouteEntriesInput): RouteEntry[] {
   };
 
   const out: RouteEntry[] = PURPOSE_ROUTES.map((n) => make(n, 'purpose', true));
-  const known = new Set<string>([...PURPOSE_ROUTES, ...promptNames]);
+  for (const n of SYSTEM_ROUTES) out.push(make(n, 'purpose', true));
+  const known = new Set<string>([...PURPOSE_ROUTES, ...SYSTEM_ROUTES, ...promptNames]);
   const user = Object.keys(routes)
     .filter((n) => !known.has(n) && !commandNames.has(n) && ROUTE_NAME_RE.test(n))
     .sort();
@@ -190,7 +193,13 @@ export function aliasCommands(
 ): AliasCommand[] {
   const taken = new Set(existing);
   return entries
-    .filter((e) => e.kind === 'purpose' && e.name !== 'chat' && !taken.has(e.name))
+    .filter(
+      (e) =>
+        e.kind === 'purpose' &&
+        e.name !== 'chat' &&
+        !(SYSTEM_ROUTES as readonly string[]).includes(e.name) &&
+        !taken.has(e.name),
+    )
     .map((e) => ({
       name: e.name,
       usage: `/${e.name} <pedido>`,

@@ -30,6 +30,8 @@ export interface StatusBarProps {
   mouseOff?: boolean;
   /** Route of the turn being generated when it is not `chat` (specs/008). */
   route?: string;
+  /** Autopilot run in progress (specs/011 FR-025). */
+  autopilot?: { story: number; total: number; step: string };
 }
 
 export const MOUSE_OFF_TEXT = 'mouse desligado';
@@ -69,14 +71,19 @@ export function StatusBar({
   approvalMode,
   mouseOff,
   route,
+  autopilot,
 }: StatusBarProps) {
   const compact = capabilities.compact;
+  const stateText = autopilot
+    ? `autopiloto · história ${autopilot.story}/${autopilot.total} · ${autopilot.step}`
+    : STATE_TEXT[state];
   let hints: string;
   if (state === 'generating') hints = 'Esc cancel';
   else if (state === 'awaiting_confirmation') hints = compact ? 'y / n' : 'y approve · n decline';
   else if (state === 'awaiting_answer')
     hints = compact ? '↑↓ Enter Esc' : '↑↓ choose · Enter confirm · Esc decline';
   else hints = compact ? '/help · Ctrl+C×2 exit' : 'Enter send · /help · Ctrl+C×2 exit';
+  if (autopilot && (state === 'idle' || state === 'generating')) hints = 'Esc interromper';
   if (scrollable) hints = compact ? `PgUp/PgDn · ${hints}` : `PgUp/PgDn scroll · ${hints}`;
   if (capabilities.tooSmall) hints = '';
 
@@ -102,9 +109,7 @@ export function StatusBar({
   const right = `${usageText}${hints}`;
   // The left side is never cut (the state word matters); the hint is shown only when it fits.
   const leftBase =
-    visualWidth(STATE_TEXT[state]) +
-    (approvalMode ? 5 + visualWidth(modeText) : 0) +
-    visualWidth(tail);
+    visualWidth(stateText) + (approvalMode ? 5 + visualWidth(modeText) : 0) + visualWidth(tail);
   const showHint =
     Boolean(approvalMode) &&
     !compact &&
@@ -114,7 +119,7 @@ export function StatusBar({
   return (
     <Box height={1} flexShrink={0} paddingX={1} justifyContent="space-between" overflow="hidden">
       <Box flexShrink={0}>
-        <Text dimColor>{STATE_TEXT[state]}</Text>
+        <Text dimColor>{stateText}</Text>
         {approvalMode && (
           <>
             <Text dimColor>{'  ·  '}</Text>

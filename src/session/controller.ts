@@ -51,6 +51,19 @@ import { toolLabel } from '../ui/toolDisplay.js';
 import { activityReducer, formatSummary, initialActivity, summarize } from './activity.js';
 import type { Activity, ActivityEvent } from './activity.js';
 import type { ContentPart } from '../providers/types.js';
+import type { Effort } from '../config/schema.js';
+import type { StepName } from '../autopilot/types.js';
+import { AutopilotDriver, shellVerify } from '../autopilot/driver.js';
+import type { AutopilotDeps } from '../autopilot/driver.js';
+import { ghRemote } from '../autopilot/remote.js';
+import { systemGit, systemGitCommit } from '../speckit/git.js';
+
+/** Status bar line of an autopilot run (specs/011 FR-025). */
+export interface AutopilotStatus {
+  story: number;
+  total: number;
+  step: StepName;
+}
 
 export type NoticeLevel = 'info' | 'warn' | 'error';
 
@@ -110,6 +123,8 @@ export interface ControllerOptions {
   history?: InputHistory;
   /** Native Spec Kit host (commands, script interception); absent → no /speckit.* commands. */
   specKit?: SpecKitService;
+  /** Test seams for the autopilot (specs/011): git, remote, verification, clock. */
+  autopilotDeps?: Partial<Omit<AutopilotDeps, 'controller'>>;
   /** Test seams for the activity line (specs/009): clock and the waiting-phrase draw. */
   clock?: () => number;
   random?: () => number;
@@ -154,8 +169,18 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   lastUsage = { inputTokens: 0, outputTokens: 0 };
   /** Activity of the turn in progress (specs/009 US1); undefined when idle. */
   activity?: Activity;
+  /** Autopilot run in progress (specs/011); undefined otherwise. */
+  autopilotStatus?: AutopilotStatus;
+  /** Set by the autopilot driver while a run is active: Esc cancels the whole run (specs/011). */
+  autopilotCancel?: () => void;
+  /** Per-run replacements installed by `runOverrides` (specs/011 research R3). */
+  private overrides: {
+    ask?: (request: AskUserRequest) => Promise<AskUserOutcome>;
+    confirm?: (action: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
+  } = {};
   readonly clock: () => number;
   private readonly random: () => number;
+  private readonly autopilotDeps: Partial<Omit<AutopilotDeps, 'controller'>>;
   /** Open modal dialog (/auth, /model), if any. */
   dialog?: DialogState;
   /**
@@ -213,6 +238,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.history = opts.history;
     this.clock = opts.clock ?? Date.now;
     this.random = opts.random ?? Math.random;
+    this.autopilotDeps = opts.autopilotDeps ?? {};
     this.session.on('change', () => {
       // Confirmation / question phases follow the session state (specs/009 contracts/activity-line.md § 2).
       if (this.activity) {
@@ -522,14 +548,86 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.emit('change');
   }
 
-  clearConversation(): void {
+  clearConversation(opts: { quiet?: boolean } = {}): void {
     try {
       this.session.clear();
-      this.notice('Conversation cleared.', 'info');
+      if (!opts.quiet) this.notice('Conversation cleared.', 'info');
     } catch (err) {
       if (err instanceof SessionBusyError) this.notice(err.message, 'warn');
       else throw err;
     }
+  }
+
+  // ---------------------------------------------------------------- autopilot (specs/011)
+
+  /**
+   * Replaces, for one autopilot run, how questions and confirmations are answered and the
+   * approval mode (research R3). Returns the function that restores the previous behaviour.
+   */
+  runOverrides(o: {
+    ask?: (request: AskUserRequest) => Promise<AskUserOutcome>;
+    confirm?: (action: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
+    approvalMode?: ApprovalMode;
+  }): () => void {
+    const previous = { overrides: this.overrides, mode: this.approvalMode };
+    this.overrides = { ask: o.ask, confirm: o.confirm };
+    if (o.approvalMode) this.approvalMode = o.approvalMode;
+    this.emit('change');
+    let restored = false;
+    return () => {
+      if (restored) return;
+      restored = true;
+      this.overrides = previous.overrides;
+      this.approvalMode = previous.mode;
+      this.emit('change');
+    };
+  }
+
+  /** A driver for one autopilot run (real git, `gh` and shell unless injected). */
+  createAutopilot(progress?: (line: string) => void): AutopilotDriver {
+    const d = this.autopilotDeps;
+    return new AutopilotDriver({
+      controller: this,
+      git: d.git ?? this.specKit?.git ?? systemGit,
+      gitCommit: d.gitCommit ?? systemGitCommit,
+      remote: d.remote ?? ghRemote,
+      verify: d.verify ?? shellVerify,
+      now: d.now,
+      pid: d.pid,
+      progress: progress ?? d.progress,
+    });
+  }
+
+  /** `autopiloto · história n/N · <passo>` in the status bar; undefined when no run is active. */
+  setAutopilotStatus(status: AutopilotStatus | undefined): void {
+    this.autopilotStatus = status;
+    this.emit('change');
+  }
+
+  /** Target of a route without running a turn (the autopilot decider calls the provider itself). */
+  resolveRouteTarget(route: string): {
+    provider: ModelProvider;
+    model?: string;
+    overrides?: { effort?: Effort; maxTokens?: number };
+  } {
+    const resolved = resolveRoute({
+      forced: route,
+      routes: routesOf(this.ctx.settings),
+      statuses: this.statuses(),
+      active: { provider: this.session.activeProviderId, model: this.activeModel },
+      known: this.routeEntries()
+        .filter((e) => !e.missingCommand)
+        .map((e) => e.name),
+    });
+    const t = resolved.target;
+    return {
+      provider: this.providerFor(t.provider),
+      model: resolved.via === 'active' ? this.session.modelOverride : t.model,
+      overrides:
+        t.effort !== undefined || t.maxTokens !== undefined
+          ? { effort: t.effort, maxTokens: t.maxTokens }
+          : undefined,
+    };
   }
 
   requestExit(): void {
@@ -605,6 +703,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       onDelta?: (text: string) => void;
       /** Forced route for this request (`-p --route`; specs/008). */
       route?: string;
+      /** false: not recorded in the ↑/↓ input history (autopilot turns, specs/011). */
+      record?: boolean;
     } = {},
   ): Promise<TurnResult | undefined> {
     if (this.dialog) {
@@ -615,7 +715,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     const typed = typeof input === 'string' ? input : input.display;
     const expanded = typeof input === 'string' ? input : input.text;
     // Recorded before executing so that /clear and /exit are kept too (contracts/history.md § 2).
-    this.history?.push(typed);
+    // Autopilot turns are not the user's input and stay out of ↑/↓ (specs/011).
+    if (opts.record !== false) this.history?.push(typed);
     if (submission) {
       for (const w of submission.warnings) this.notice(w, 'warn');
       for (const c of submission.sent ?? []) this.logger.log('paste.chip', c);
@@ -717,6 +818,12 @@ export class SessionController extends EventEmitter<ControllerEvents> {
           feed({ type: 'usage', input, output });
           this.emit('change');
         },
+        // Rate limit: the partial reply is dropped and the request retried after a wait.
+        onRetry: (waitMs, attempt) => {
+          this.partialText = '';
+          this.logger.log('turn.retry', { provider: provider.id, waitMs, attempt });
+          this.emit('change');
+        },
         onNotice: (text, level) => this.notice(text, level),
         onError: (err) => {
           this.logger.log('turn.error', {
@@ -753,8 +860,9 @@ export class SessionController extends EventEmitter<ControllerEvents> {
           this.partialText = '';
           this.emit('change');
         },
-        confirm: opts.confirm ?? (this.interactive ? waitForUi : undefined),
-        ask: this.interactive ? this.askUser : undefined,
+        confirm:
+          opts.confirm ?? this.overrides.confirm ?? (this.interactive ? waitForUi : undefined),
+        ask: this.overrides.ask ?? (this.interactive ? this.askUser : undefined),
       },
     );
     this.partialText = '';

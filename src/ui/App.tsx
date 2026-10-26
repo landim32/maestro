@@ -81,7 +81,10 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
 
   const { exitArmed } = useKeyboard({
     state: snap.state,
-    onCancel: () => controller.cancel(),
+    // During an autopilot run Esc interrupts the whole run (the step becomes resumable).
+    onCancel: () =>
+      controller.autopilotCancel ? controller.autopilotCancel() : controller.cancel(),
+    autopilotActive: Boolean(snap.autopilot),
     onExit,
     onConfirm: (ok) => controller.confirm(ok),
     viewport,
@@ -241,7 +244,7 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
         />
       )}
       <InputPrompt
-        active={snap.state === 'idle' && !dialog}
+        active={snap.state === 'idle' && !dialog && !snap.autopilot}
         historyItems={snap.historyItems}
         commands={snap.commands}
         onSubmit={onSubmit}
@@ -253,13 +256,15 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
         env={env}
         onNotice={onPromptNotice}
         placeholder={
-          dialog
-            ? 'diálogo aberto — Esc para fechar'
-            : snap.state === 'idle'
-              ? undefined
-              : snap.state === 'awaiting_answer'
-                ? 'responda à pergunta acima'
-                : 'waiting for the model…'
+          snap.autopilot
+            ? 'autopiloto em execução — Esc para interromper'
+            : dialog
+              ? 'diálogo aberto — Esc para fechar'
+              : snap.state === 'idle'
+                ? undefined
+                : snap.state === 'awaiting_answer'
+                  ? 'responda à pergunta acima'
+                  : 'waiting for the model…'
         }
         columns={caps.columns}
         color={caps.color}
@@ -274,6 +279,7 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
         approvalMode={snap.approvalMode}
         mouseOff={!snap.mouseEnabled}
         route={snap.currentRoute}
+        autopilot={snap.autopilot}
       />
     </Box>
   );

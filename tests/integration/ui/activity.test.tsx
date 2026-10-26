@@ -63,7 +63,7 @@ describe('activity line (US1)', () => {
     const ui = mountApp({ columns: 100, rows: 30 });
     await waitForFrame(ui, 'Type a message');
     await send(ui, '/help');
-    await waitForFrame(ui, '/exit');
+    await waitForFrame(ui, 'Tools: read_file'); // end of the /help text
     expect(activity.test(ui.frameText())).toBe(false);
     expect(ui.frameText()).not.toMatch(/✻ \d+s/);
   });

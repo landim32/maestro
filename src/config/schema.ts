@@ -94,8 +94,8 @@ export const toolsSettingsSchema = z.strictObject({
   enabled: z.boolean().default(DEFAULTS.tools.enabled),
   commandTimeoutMs: z.number().int().min(1000).default(DEFAULTS.tools.commandTimeoutMs),
   maxOutputChars: z.number().int().min(1000).default(DEFAULTS.tools.maxOutputChars),
-  /** Model rounds with tool calls per turn; the Claude Code provider allows 5 calls per round. */
-  maxToolIterations: z.number().int().min(1).max(1000).default(DEFAULTS.tools.maxToolIterations),
+  /** Model rounds with tool calls per turn (Claude Code: 5 calls per round); 0 = no limit. */
+  maxToolIterations: z.number().int().min(0).max(100_000).default(DEFAULTS.tools.maxToolIterations),
   approvalMode: approvalModeSchema.default(DEFAULTS.tools.approvalMode),
 });
 
@@ -122,6 +122,40 @@ export const speckitSettingsSchema = z.strictObject({
   /** `/speckit.specify` creates and checks out the feature branch when the project is a git repo. */
   createBranch: z.boolean().default(true),
 });
+
+/** Autopilot (specs/011 data-model.md § 2): verification, per-story limits, commits, remote. */
+export const autopilotSettingsSchema = z
+  .strictObject({
+    _comment: comment,
+    verify: z
+      .strictObject({
+        _comment: comment,
+        /** Commands that must exit 0; default: the package.json scripts test/lint/build. */
+        command: z.array(z.string().min(1)).optional(),
+        maxAttempts: z.number().int().min(0).max(10).default(DEFAULTS.autopilot.verifyMaxAttempts),
+        timeoutMs: z.number().int().min(1000).default(DEFAULTS.autopilot.verifyTimeoutMs),
+      })
+      .prefault({}),
+    limits: z
+      .strictObject({
+        _comment: comment,
+        turns: z.number().int().min(7).default(DEFAULTS.autopilot.turns),
+        minutes: z.number().int().min(1).default(DEFAULTS.autopilot.minutes),
+        /** 0 = no limit. */
+        tokens: z.number().int().min(0).default(0),
+      })
+      .prefault({}),
+    commitPrefix: z.enum(['fix:', 'feat:']).default('fix:'),
+    /** Push the branch and open a PR after each story (never by default). */
+    push: z.boolean().default(false),
+    /** Merge the PR (requires push). */
+    merge: z.boolean().default(false),
+    prBase: z.string().min(1).optional(),
+  })
+  .superRefine((a, ctx) => {
+    if (a.merge && !a.push)
+      ctx.addIssue({ code: 'custom', path: ['merge'], message: 'merge exige push: true' });
+  });
 
 /** Route names: lowercase, digits, `.`, `-`, `_` (specs/008 contracts/routes-config.md § 1). */
 export const ROUTE_NAME_RE = /^[a-z0-9][a-z0-9._-]*$/;
@@ -201,6 +235,7 @@ export const settingsSchema = z.strictObject({
   tools: toolsSettingsSchema.prefault({}),
   ui: uiSettingsSchema.prefault({}),
   speckit: speckitSettingsSchema.prefault({}),
+  autopilot: autopilotSettingsSchema.prefault({}),
   routes: routesSettingsSchema.prefault({}),
 });
 
@@ -212,6 +247,7 @@ export type ClaudeCodeProviderSettings = z.infer<typeof claudeCodeProviderSchema
 export type ToolsSettings = z.infer<typeof toolsSettingsSchema>;
 export type UiSettings = z.infer<typeof uiSettingsSchema>;
 export type SpecKitSettings = z.infer<typeof speckitSettingsSchema>;
+export type AutopilotSettings = z.infer<typeof autopilotSettingsSchema>;
 export type RouteTarget = z.infer<typeof routeTargetSchema>;
 /** Validated routes without the `_comment` entry. */
 export type RoutesSettings = Record<string, RouteTarget>;

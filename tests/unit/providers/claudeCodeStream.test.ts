@@ -233,3 +233,14 @@ describe('claudeCodeStream — errors (research R6)', () => {
     });
   });
 });
+
+describe('claudeCodeStream — usage limit wait (never stop)', () => {
+  it('a rejected subscription limit carries the wait until its reset (+5 s)', () => {
+    const st = newParserState();
+    st.rateLimitResetsAt = Math.floor(Date.now() / 1000) + 600;
+    const e = resultError({ type: 'result', is_error: true, result: 'usage limit' }, st, (s) => s);
+    expect(e?.category).toBe('rate_limit');
+    expect(e?.retryAfterMs).toBeGreaterThan(590_000);
+    expect(e?.retryAfterMs).toBeLessThanOrEqual(606_000);
+  });
+});

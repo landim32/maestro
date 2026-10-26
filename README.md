@@ -100,7 +100,7 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
     "enabled": true,
     "commandTimeoutMs": 60000,
     "maxOutputChars": 20000,
-    "maxToolIterations": 50,
+    "maxToolIterations": 0,
     "approvalMode": "default"
   },
   "ui": {
@@ -114,7 +114,9 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
 }
 ```
 
-Em `tools`: `maxToolIterations` (padrão 50) é quantas rodadas de ferramentas o modelo pode fazer num mesmo turno antes de o Maestro parar com o aviso `stopped after N tool iterations in one turn`. No provedor `claude-code`, cada rodada vale 5 chamadas, então o padrão permite 250. Comandos agênticos como `/speckit.implement` precisam de dezenas de ações; se o limite for atingido, envie "continue" para seguir do ponto em que parou.
+Em `tools`: `maxToolIterations` é quantas rodadas de ferramentas o modelo pode fazer num mesmo turno. O padrão `0` significa **sem limite**, como no Claude Code, no qwen-code e no gemini-cli: o turno só termina quando o modelo responde sem pedir ferramenta, ou quando você aperta Esc. Um valor positivo cria um teto (no `claude-code`, 5 chamadas por rodada) e faz o Maestro parar com o aviso `stopped after N tool iterations in one turn`.
+
+**Limite de taxa ou de uso do provedor.** Quando o provedor recusa por excesso de pedidos, ou a assinatura do Claude Code atinge o limite de uso, o Maestro não encerra o turno. Ele avisa (`limite de taxa do provedor …; aguardando 30s e tentando de novo`), espera e reenvia o mesmo pedido. A espera é o tempo indicado pelo provedor (`Retry-After` ou o horário de liberação da assinatura). Sem indicação, ela começa em 5 s e dobra a cada tentativa, até 5 min. As ferramentas que já rodaram ficam no histórico, e só a resposta parcial é descartada. O Esc interrompe a espera.
 
 Em `ui`: `pasteCollapseLines` é o número de linhas a partir do qual uma colagem vira marcador; `attachMaxBytes` limita cada arquivo colado, `attachMaxTotalBytes` o total anexado por mensagem e `imageMaxBytes` cada imagem.
 
@@ -245,6 +247,56 @@ Uma **rota** é um nome que aponta para um provedor e um modelo (e, se quiser, `
 ```
 
 Códigos de saída: `0` sucesso · `1` erro do provedor (modo `-p`) · `2` uso/configuração inválida · `3` nenhum provedor utilizável · `130` interrompido.
+
+### Autopiloto
+
+O autopiloto pega um arquivo de histórias de usuário e leva cada uma por todos os passos do Spec Kit, sem nenhuma interação: `specify → clarify → plan → tasks → analyze → implement → verificação`.
+
+```bash
+/autopilot historias.md              # na sessão interativa
+/autopilot --resume                  # retoma uma execução interrompida ou parada
+/autopilot --status                  # mostra o estado salvo
+maestro -p --autopilot historias.md  # sem terminal: progresso no stderr, relatório no stdout
+```
+
+O arquivo é Markdown, e cada título `## ` é uma história:
+
+```markdown
+## Saudação
+
+Como usuário, quero uma função greet(name) que devolve "Olá, <name>!".
+
+## Despedida
+
+Como usuário, quero bye(name) que devolve "Tchau, <name>!".
+```
+
+Um arquivo sem títulos `##` conta como uma história só. O texto antes do primeiro `##` vale como contexto para todas.
+
+- **Cada história vira uma feature** com a própria branch `NNN-nome`. As histórias rodam em sequência, e cada branch parte da anterior. Cada passo começa numa conversa limpa, lê os artefatos do disco e usa a rota configurada para o comando em `/routes`. Cada passo concluído vira um commit (`fix: autopilot(012): plan`), então dá para desfazer passo a passo. O analyze só lê e não gera commit.
+- **Decisões automáticas.** As perguntas que os passos fariam a você vão para um decisor, que usa a rota `autopilot.decide` e por padrão segue `chat`. Isso inclui as clarificações, o "(yes/no)" do implement e qualquer pergunta deixada no fim de um turno. O decisor escolhe a opção recomendada, ou senão a que menos amplia escopo e risco, sempre com uma justificativa. Tudo fica em `specs/NNN-nome/decisions.md`, que é versionado, e em `.maestro/autopilot/<execução>.jsonl`, que é local.
+- **Portões entre os passos.**
+  - specify, plan e tasks precisam criar o artefato.
+  - Se o analyze apontar algo CRITICAL, há uma rodada de correção e uma nova análise.
+  - O implement repete "continue" enquanto marcar tarefas novas.
+  - A verificação (`autopilot.verify.command`; por padrão, os scripts `test`, `lint` e `build` do `package.json`) tem até `autopilot.verify.maxAttempts` correções.
+  - Um portão que falha para a execução, com relatório e o comando de retomada.
+- **Segurança.** Durante a execução, o modo de aprovação é `auto`, nunca `yolo`. Edições e comandos comuns rodam, e comandos destrutivos são recusados. Escritas continuam confinadas à pasta. Nada vai para o remoto, a menos que você ligue `autopilot.push` (push e um PR por história, cada um com base na branch anterior). O merge exige também `autopilot.merge`.
+- **Limites e retomada.** Cada história tem tetos de turnos, tempo e tokens (`autopilot.limits`). O limite de taxa do provedor não para a execução: o turno espera e tenta de novo. O estado fica em `.specify/autopilot.json`, que é local e fica de fora dos commits pelo `.git/info/exclude`. Um Esc, um Ctrl+C ou o limite de uso do provedor interrompem o passo atual. As alterações parciais vão para um `git stash` nomeado, e `/autopilot --resume` recomeça desse passo.
+
+```json
+{
+  "autopilot": {
+    "verify": { "command": ["npm test", "npm run lint"], "maxAttempts": 3, "timeoutMs": 600000 },
+    "limits": { "turns": 60, "minutes": 120, "tokens": 0 },
+    "commitPrefix": "fix:",
+    "push": false,
+    "merge": false
+  }
+}
+```
+
+O autopiloto exige um repositório git com a árvore limpa e o Spec Kit inicializado (`/speckit.init`).
 
 ## Desenvolvimento
 
