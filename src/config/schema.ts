@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { APPROVAL_MODES } from '../tools/approval.js';
 import { DEFAULTS } from './defaults.js';
 
-export const PROVIDER_IDS = ['claude', 'qwen', 'claude-code'] as const;
+export const PROVIDER_IDS = ['claude', 'qwen', 'claude-code', 'codex'] as const;
 export const providerIdSchema = z.enum(PROVIDER_IDS);
 
 const comment = z.string().optional();
@@ -83,6 +83,20 @@ export const claudeCodeProviderSchema = z.strictObject({
   models: modelsSchema(DEFAULTS.claudeCode.models),
   effort: effortSchema.default(DEFAULTS.claudeCode.effort),
   /** Path to the executable; default: `claude` on PATH. */
+  command: z.string().min(1, 'must not be empty').optional(),
+});
+
+/**
+ * Codex provider (specs/012): runs the user's installed `codex` binary, which handles its own
+ * login (ChatGPT subscription). Maestro never reads or stores those credentials.
+ */
+export const codexProviderSchema = z.strictObject({
+  _comment: comment,
+  enabled: z.boolean().default(false),
+  model: z.string().min(1, 'must not be empty').default(DEFAULTS.codex.model),
+  models: modelsSchema(DEFAULTS.codex.models),
+  effort: effortSchema.default(DEFAULTS.codex.effort),
+  /** Path to the executable; default: `codex` on PATH. */
   command: z.string().min(1, 'must not be empty').optional(),
 });
 
@@ -230,6 +244,7 @@ export const settingsSchema = z.strictObject({
       claude: claudeProviderSchema.prefault({}),
       qwen: qwenProviderSchema.prefault({}),
       'claude-code': claudeCodeProviderSchema.prefault({}),
+      codex: codexProviderSchema.prefault({}),
     })
     .prefault({}),
   tools: toolsSettingsSchema.prefault({}),
@@ -244,6 +259,7 @@ export type Effort = z.infer<typeof effortSchema>;
 export type ClaudeProviderSettings = z.infer<typeof claudeProviderSchema>;
 export type QwenProviderSettings = z.infer<typeof qwenProviderSchema>;
 export type ClaudeCodeProviderSettings = z.infer<typeof claudeCodeProviderSchema>;
+export type CodexProviderSettings = z.infer<typeof codexProviderSchema>;
 export type ToolsSettings = z.infer<typeof toolsSettingsSchema>;
 export type UiSettings = z.infer<typeof uiSettingsSchema>;
 export type SpecKitSettings = z.infer<typeof speckitSettingsSchema>;

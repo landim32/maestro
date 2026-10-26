@@ -6,7 +6,7 @@ import { anthropicCredentialDirs, globalSettingsPath, projectSettingsPath } from
 import { formatZodIssues, settingsSchema, PROVIDER_IDS } from './schema.js';
 import type { ProviderId, Settings } from './schema.js';
 import type { ApprovalMode } from '../tools/approval.js';
-import { locateClaudeCode } from '../utils/process.js';
+import { locateClaudeCode, locateCodex } from '../utils/process.js';
 
 /** `cli`: the provider's own CLI holds the login (Claude Code, specs/010). */
 export type CredentialSource = 'config' | 'env' | 'profile' | 'cli' | 'none';
@@ -163,7 +163,12 @@ export function resolveCredentialSources(
   const claudeCode: CredentialSource =
     cc.enabled && locateClaudeCode(cc.command, { env, platform }) ? 'cli' : 'none';
 
-  return { claude, qwen, 'claude-code': claudeCode };
+  // Same for the Codex CLI (specs/012).
+  const cx = settings.providers.codex;
+  const codex: CredentialSource =
+    cx.enabled && locateCodex(cx.command, { env, platform }) ? 'cli' : 'none';
+
+  return { claude, qwen, 'claude-code': claudeCode, codex };
 }
 
 /**

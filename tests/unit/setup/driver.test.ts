@@ -8,6 +8,33 @@ import { makeCtx, makeSettings } from '../../helpers/context.js';
 import { fakeAntCli } from '../../helpers/fakeAnt.js';
 import { textProvider } from '../../helpers/fakeProvider.js';
 import type { ClaudeCodeCli, ClaudeCodeStatus } from '../../../src/setup/claudeCodeCli.js';
+import type { CodexCli, CodexLoginStatus } from '../../../src/setup/codexCli.js';
+
+/** Codex CLI double (specs/012): never starts a process; records what the driver asked for. */
+function fakeCodexCli(
+  location: string | undefined,
+  status: CodexLoginStatus | { error: string },
+  version: string | undefined = '0.161.0',
+): CodexCli & { calls: string[]; setLocation(p: string | undefined): void } {
+  let loc = location;
+  const calls: string[] = [];
+  return {
+    calls,
+    setLocation: (p) => (loc = p),
+    locate: () => {
+      calls.push('locate');
+      return loc;
+    },
+    readVersion: async () => {
+      calls.push('readVersion');
+      return version;
+    },
+    readLoginStatus: async () => {
+      calls.push('readLoginStatus');
+      return status;
+    },
+  };
+}
 
 /** Claude Code CLI double: never starts a process; records what the driver asked for. */
 function fakeClaudeCodeCli(
@@ -38,6 +65,7 @@ function makeHarness(
     env?: NodeJS.ProcessEnv;
     ant?: ReturnType<typeof fakeAntCli>;
     claudeCode?: ClaudeCodeCli;
+    codex?: CodexCli;
   } = {},
 ) {
   let stored = makeSettings({});
@@ -45,6 +73,7 @@ function makeHarness(
     claude: 'env' as const,
     qwen: 'none' as const,
     'claude-code': 'none' as const,
+    codex: 'none' as const,
   };
   const writes: SettingsPatchEntry[][] = [];
   const session = new Session({ cwd: '/w', activeProviderId: 'claude' });
@@ -77,6 +106,7 @@ function makeHarness(
         claude: credentials.claude,
         qwen: stored.providers.qwen.apiKey ? 'config' : 'none',
         'claude-code': stored.providers['claude-code'].enabled ? 'cli' : 'none',
+        codex: stored.providers.codex.enabled ? 'cli' : 'none',
       } as unknown as typeof credentials;
       return { path: '/mem/settings.json', overriddenByProject: [] };
     },
@@ -85,6 +115,7 @@ function makeHarness(
       testConnection: test,
       ant: opts.ant ?? fakeAntCli(),
       claudeCode: opts.claudeCode ?? fakeClaudeCodeCli(undefined, { loggedIn: false }),
+      codex: opts.codex ?? fakeCodexCli(undefined, { loggedIn: false }),
       env: opts.env ?? {},
       platform: 'win32',
     },
@@ -398,5 +429,72 @@ describe('SetupDriver — Claude Code (specs/010 US3, FR-012)', () => {
     h.ctl.setup.dispatch({ type: 'enter' });
     await tick();
     expect(flowOf(h.ctl)).toMatchObject({ step: 'login.failed', reason: 'sem resposta' });
+  });
+});
+
+describe('SetupDriver — Codex (specs/012 US3, FR-012)', () => {
+  it('missing CLI → install hints; ChatGPT login → enables the provider, offers activation', async () => {
+    const cx = fakeCodexCli(undefined, { loggedIn: true, method: 'chatgpt' });
+    const h = makeHarness({ codex: cx });
+    const d = h.ctl.setup;
+    d.openAuth('codex');
+    d.dispatch({ type: 'enter' });
+    expect(flowOf(h.ctl)).toMatchObject({ step: 'login.missing' });
+    expect((flowOf(h.ctl) as { hints: string[] }).hints.join('\n')).toContain(
+      'npm install -g @openai/codex',
+    );
+
+    cx.setLocation('/usr/bin/codex');
+    d.dispatch({ type: 'enter' }); // tentar novamente
+    await tick();
+    expect(flowOf(h.ctl)).toMatchObject({ step: 'activate' });
+    expect((flowOf(h.ctl) as { warnings: string[] }).warnings).toEqual([
+      'Codex 0.161.0 logado (conta do ChatGPT).',
+    ]);
+    expect(h.writes.at(-1)).toEqual([{ path: 'providers.codex.enabled', value: true }]);
+    expect(cx.calls).toEqual(['locate', 'locate', 'readVersion', 'readLoginStatus']);
+
+    d.dispatch({ type: 'enter' }); // ativar
+    await tick();
+    expect(h.ctl.session.activeProviderId).toBe('codex');
+  });
+
+  it('API-key login is accepted with an OpenAI credits warning', async () => {
+    const h = makeHarness({
+      codex: fakeCodexCli('/usr/bin/codex', { loggedIn: true, method: 'api-key' }),
+    });
+    h.ctl.setup.openAuth('codex');
+    h.ctl.setup.dispatch({ type: 'enter' });
+    await tick();
+    const warnings = (flowOf(h.ctl) as { warnings: string[] }).warnings;
+    expect(warnings[0]).toBe('Codex 0.161.0 logado (chave de API).');
+    expect(warnings[1]).toContain('créditos da API da OpenAI');
+  });
+
+  it('never starts a login: not logged in → failure with the codex login hint, nothing written', async () => {
+    const cx = fakeCodexCli('/usr/bin/codex', { loggedIn: false });
+    const h = makeHarness({ codex: cx });
+    h.ctl.setup.openAuth('codex');
+    h.ctl.setup.dispatch({ type: 'enter' });
+    await tick();
+    expect(flowOf(h.ctl)).toMatchObject({ step: 'login.failed' });
+    expect((flowOf(h.ctl) as { reason: string }).reason).toContain('codex login');
+    expect(h.writes).toEqual([]);
+  });
+
+  it('an old or unreadable version is refused with the update hint', async () => {
+    for (const version of ['0.150.0', '']) {
+      const cx = fakeCodexCli('/usr/bin/codex', { loggedIn: true, method: 'chatgpt' }, version);
+      const h = makeHarness({ codex: cx });
+      h.ctl.setup.openAuth('codex');
+      h.ctl.setup.dispatch({ type: 'enter' });
+      await tick();
+      expect(flowOf(h.ctl)).toMatchObject({ step: 'login.failed' });
+      expect((flowOf(h.ctl) as { reason: string }).reason).toContain(
+        'npm install -g @openai/codex',
+      );
+      expect(cx.calls).not.toContain('readLoginStatus');
+      expect(h.writes).toEqual([]);
+    }
   });
 });

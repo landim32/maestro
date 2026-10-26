@@ -17,8 +17,9 @@ const NAV = '↑↓ navegar · Enter selecionar · Esc fechar';
 const FIELD = 'Enter avançar · Esc voltar · Ctrl+U limpar';
 const CHOOSE = '↑↓ escolher · Enter confirmar · Esc voltar';
 
-/** Claude Code reuses the login steps but only checks its status (specs/010). */
-const cc = (flow: { method: { id: string } }) => flow.method.id === 'claude-code';
+/** Claude Code and Codex reuse the login steps but only check their status (specs/010, 012). */
+const cc = (flow: { method: { id: string } }) =>
+  flow.method.id === 'claude-code' || flow.method.id === 'codex';
 
 /** Maps AuthFlowState → screens (contracts/dialog-flows.md). */
 export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
@@ -167,7 +168,7 @@ export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
       return (
         <DialogFrame title={flow.method.label} hints="" color={color}>
           <ProgressView
-            message={cc(flow) ? 'Procurando o Claude Code…' : 'Procurando a CLI ant…'}
+            message={cc(flow) ? `Procurando o ${flow.method.label}…` : 'Procurando a CLI ant…'}
             color={color}
             hint=""
           />
@@ -181,7 +182,7 @@ export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
             kind="error"
             title={
               cc(flow)
-                ? 'O Claude Code não foi encontrado.'
+                ? `O ${flow.method.label} não foi encontrado.`
                 : "A CLI 'ant' da Anthropic não foi encontrada."
             }
             lines={flow.hints}
@@ -198,7 +199,7 @@ export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
           <ProgressView
             message={
               cc(flow)
-                ? 'Verificando o login do Claude Code…'
+                ? `Verificando o login do ${flow.method.label}…`
                 : 'Aguardando autorização no navegador…'
             }
             url={flow.url}
@@ -214,7 +215,7 @@ export function AuthDialog({ flow, color, onInput }: AuthDialogProps) {
             kind="error"
             title={
               cc(flow)
-                ? `Claude Code indisponível: ${flow.reason}`
+                ? `${flow.method.label} indisponível: ${flow.reason}`
                 : `Login não concluído: ${flow.reason}`
             }
             actions={['Tentar novamente', 'Voltar']}

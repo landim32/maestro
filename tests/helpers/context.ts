@@ -18,7 +18,13 @@ export function makeCtx(
   return {
     settings: makeSettings(input),
     activeId: opts.activeId ?? 'claude',
-    credentialSources: { claude: 'env', qwen: 'none', 'claude-code': 'none', ...opts.credentials },
+    credentialSources: {
+      claude: 'env',
+      qwen: 'none',
+      'claude-code': 'none',
+      codex: 'none',
+      ...opts.credentials,
+    },
     env: opts.env ?? {},
   };
 }

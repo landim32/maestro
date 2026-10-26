@@ -9,8 +9,8 @@ import { statusLabel } from '../../../src/providers/status.js';
 import { makeCtx } from '../../helpers/context.js';
 
 describe('provider registry', () => {
-  it('registers claude, qwen and claude-code', () => {
-    expect(registeredProviders()).toEqual(['claude', 'qwen', 'claude-code']);
+  it('registers claude, qwen, claude-code and codex', () => {
+    expect(registeredProviders()).toEqual(['claude', 'qwen', 'claude-code', 'codex']);
     expect(createProvider('claude', makeCtx()).id).toBe('claude');
     expect(createProvider('qwen', makeCtx()).id).toBe('qwen');
   });

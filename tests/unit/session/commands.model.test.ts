@@ -42,6 +42,7 @@ describe('/model', () => {
         'claude',
         'qwen',
         'claude-code',
+        'codex',
       ]);
       expect(flow.items[flow.selected]).toMatchObject({
         providerId: 'claude',

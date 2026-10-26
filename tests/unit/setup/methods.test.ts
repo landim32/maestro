@@ -20,7 +20,9 @@ describe('connection methods catalogue (contracts/dialog-flows.md § 3)', () => 
       'claude-login',
       'qwen',
       'claude-code',
+      'codex',
     ]);
+    expect(methodById('codex')).toMatchObject({ kind: 'login', providerId: 'codex', fields: [] });
     expect(methodById('claude-api').fields.map((f) => f.key)).toEqual([
       'apiKey',
       'baseUrl',

@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Maestro is a multi-model AI assistant for the terminal (Claude + Qwen), written in TypeScript on Node ≥ 22 (ESM) with an Ink 8 / React 19 UI. It hosts GitHub's Spec Kit natively and is developed through it: every feature lives in `specs/NNN-name/` (spec, plan, research, data-model, contracts, quickstart, tasks) and is driven by the `/speckit.*` commands. The `## Active Technologies`, `## Recent Changes` and `Last updated` lines below are rewritten by `/speckit.plan` (`src/speckit/steps/agentContext.ts`); keep those headings verbatim. Everything else is maintained by hand. The project constitution is `.specify/memory/constitution.md` (YAGNI, text-first CLI, testability, credential safety, minimal observability, permanent MIT open source, third-party attribution).
+Maestro is a multi-model AI assistant for the terminal (Claude, Claude Code, Codex, Qwen), written in TypeScript on Node ≥ 22 (ESM) with an Ink 8 / React 19 UI. It hosts GitHub's Spec Kit natively and is developed through it: every feature lives in `specs/NNN-name/` (spec, plan, research, data-model, contracts, quickstart, tasks) and is driven by the `/speckit.*` commands. The `## Active Technologies`, `## Recent Changes` and `Last updated` lines below are rewritten by `/speckit.plan` (`src/speckit/steps/agentContext.ts`); keep those headings verbatim. Everything else is maintained by hand. The project constitution is `.specify/memory/constitution.md` (YAGNI, text-first CLI, testability, credential safety, minimal observability, permanent MIT open source, third-party attribution).
 
 Last updated: 2026-10-25
 
@@ -24,6 +24,8 @@ Last updated: 2026-10-25
 **Provider boundary.** `src/providers/types.ts` defines `ModelProvider` / `ProviderEvent`; `claude.ts` and `qwen.ts` (protocol `openai` | `anthropic`, the latter reusing `anthropicProtocol.ts`) are the only files allowed to import an SDK. Every provider error becomes a `MaestroError` (`utils/errors.ts`) with a category and a secret-free message (`sanitizeCause` + `redact`); secrets are shown only via `mask()` (last 4 chars), enforced by `tests/unit/security/`. Claude requests never send `thinking`; `fallbacks: "default"` requires `client.beta.messages` + beta `server-side-fallback-2026-07-01`. `ProviderRequest.overrides` (effort/maxTokens) is honoured by the Anthropic protocol; Qwen applies maxTokens only.
 
 **Claude Code provider (specs/010).** `providers/claudeCode.ts` runs the user's own `claude` binary (`-p`, stream-json in/out; arguments, stdin history and the stdout parser are pure in `claudeCodeStream.ts`). It never reads, stores or forwards Claude.ai credentials (the user logs in inside Claude Code; `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` are stripped from the child env) and `/auth` → Claude Code only runs `claude auth status` (`setup/claudeCodeCli.ts`), never a login. Claude Code runs with `--tools ""`, `--strict-mcp-config`, `--disable-slash-commands`, `--no-session-persistence`; Maestro's tools reach it through `providers/mcpBridge.ts`, a one-turn MCP HTTP server on 127.0.0.1 with a random bearer token. The provider declares `capabilities.executesTools`, so `runTurn` passes `ProviderRequest.runTool` and takes the provider-driven path: calls are serialized and each one goes through `executeTool` (validation → `intercept` → approval → run), recording `tool_call`/`tool_result` like the built-in loop. `--safe-mode` disables the bridge and `--bare` ignores OAuth, so neither may be used. Tests drive it with `tests/helpers/fakeClaudeCode.ts` (pass `platform: 'linux'` so `killTree` never runs `taskkill` against a fake pid).
+
+**Codex provider (specs/012).** `providers/codex.ts` runs the user's own `codex exec --json` (prompt on stdin; arguments, child env, prompt, JSONL parser and `codexError` are pure in `codexStream.ts`). Same credential rule as Claude Code: Maestro never reads `CODEX_HOME`; `setup/codexCli.ts` only reads `codex --version` and the _method_ of `codex login status` (the API-key variant prints part of the key, so the rest of the line is dropped); `OPENAI_API_KEY`/`CODEX_API_KEY`/`OPENAI_BASE_URL` are stripped. Isolation: `--ephemeral --ignore-user-config --ignore-rules -s read-only -c approval_policy=never -c web_search=disabled -c project_doc_max_bytes=0 -c include_permissions_instructions=false -c include_environment_context=false` (otherwise Codex tells the model its sandbox is read-only and it stops calling `write_file`) plus `--disable` of every `CODEX_DISABLED_FEATURES` entry (shell, unified_exec, …; `code_mode_host` must stay on, it is what exposes MCP tools); the system prompt (plus `codexToolsNote` when there are tools) replaces Codex's via `-c model_instructions_file`. On Windows `locateCodex` takes `codex.exe`, then `codex.cmd` (never the npm POSIX shim `codex`). Tools go through the same `mcpBridge` (`-c mcp_servers.maestro.url=…`, token only in `MAESTRO_MCP_TOKEN` via `bearer_token_env_var`, `default_tools_approval_mode=approve` because Maestro decides). `-c` values never carry quotes (Codex takes non-TOML text literally; quotes would not survive `cmd /c` for the npm `codex.cmd` shim). `MIN_CODEX_VERSION` = 0.161.0 is checked before the first turn. Text arrives per `agent_message` block. Tests use `tests/helpers/fakeCodex.ts`; `tests/contract/codex-invocation.test.ts` pins the flags.
 
 **Session core (provider-agnostic).** `session/session.ts` is the state machine (incl. `awaiting_answer`), `session/turn.ts` runs stream + tool loop + approval policy, `session/controller.ts` (`SessionController`) is what the UI talks to, `session/commands.ts` holds slash commands, `session/history.ts` the ↑/↓ input history (`~/.maestro/history.jsonl`, ≤ 1 000 lines; dialog input and `-p` never reach it). `config/projectContext.ts` appends `MAESTRO.md` (else `CLAUDE.md`) to the system prompt.
 
@@ -71,11 +73,11 @@ src/
 ├── index.ts, version.ts
 ├── cli/          args, exitCodes, preflight, firstRun, interactive, nonInteractive
 ├── config/       paths, schema (zod), defaults, loader, writer, models, projectContext
-├── providers/    types, status, registry, anthropicProtocol, claude, qwen, claudeCode + claudeCodeStream + mcpBridge (specs/010)
+├── providers/    types, status, registry, anthropicProtocol, claude, qwen, claudeCode + claudeCodeStream + mcpBridge (specs/010), codex + codexStream (specs/012)
 ├── session/      session, turn, commands, controller, systemPrompt, history, activity
 ├── tools/        types, approval [qwen-code attrib], askUser [attrib], sandbox, readFile, listDirectory, writeFile, runCommand, registry, diff
 ├── routes/       catalog, resolve (pure)
-├── setup/        methods, authFlow, modelFlow, askUserFlow, routesFlow (reducers), driver, connectionTest, antCli, installHints, dialog
+├── setup/        methods, authFlow, modelFlow, askUserFlow, routesFlow (reducers), driver, connectionTest, antCli, claudeCodeCli, codexCli, installHints, dialog
 ├── autopilot/    types, stories, flow (pure reducer), gates, questions, decider, log, report, resume, state, remote, driver (specs/011)
 ├── speckit/      discovery, prompt, preamble, invocation, feature, naming, numbering, templates, git, init, status, service, steps/*
 ├── ui/           App, banner, chips, attachments, selection, frameRecorder, toolDisplay, components/ (ActivityLine, DiffView…), markdown/, dialogs/, hooks/
@@ -87,6 +89,7 @@ specs/NNN-*/      spec, plan, research, data-model, contracts, quickstart, tasks
 
 ## Active Technologies
 
+- 012-codex-cli-provider: no new dependencies; provider `codex` spawns the user's `codex exec --json` (own tools disabled, `read-only` sandbox) and reuses the specs/010 MCP bridge; settings `providers.codex`
 - 011-speckit-autopilot: no new dependencies; `src/autopilot/` (pure flow/gates/decider + driver), `execFile` for git and `gh`; local state `.specify/autopilot.json` + `.maestro/autopilot/<id>.jsonl` (kept out of commits via .git/info/exclude), versioned `specs/NNN/decisions.md`
 - 009-ai-output-display: no new dependencies; `diff` `structuredPatch` for the structured write diff; `tool_result.display` is in-memory only (never sent to the model nor persisted)
 - TypeScript 5.9, Node.js ≥ 22 (ESM), single npm package with the `maestro` binary; `@anthropic-ai/sdk`, `openai`, `ink` 8 + `react` 19, `yargs`, `zod` 4 (`z.toJSONSchema` for tool schemas), `diff`, `unified`/`remark-parse`/`remark-gfm`, `lowlight`, `string-width`, `ink-gradient`; `vitest` 5 + `ink-testing-library` — the Claude Code provider needs the user's own `claude` CLI (001–010)
@@ -94,9 +97,9 @@ specs/NNN-*/      spec, plan, research, data-model, contracts, quickstart, tasks
 
 ## Recent Changes
 
+- 012-codex-cli-provider: provider `codex` (user's Codex CLI with the ChatGPT subscription, own tools disabled, tools via the loopback MCP bridge)
 - 011-speckit-autopilot: /autopilot and -p --autopilot run user stories through the whole Spec Kit without interaction, with a decider, gates, per-step commits and resume
 - 009-ai-output-display: activity line (time, tokens), Claude Code style transcript (⏺/⎿), structured write diff in dialog and transcript
-- 010-claude-code-provider: provider `claude-code` (user's Claude Code CLI, tools via a loopback MCP bridge); API provider flagged as consuming credits
 
 <!-- MANUAL ADDITIONS START -->
 

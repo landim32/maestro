@@ -58,23 +58,64 @@ export function findExecutable(name: string, opts: FindExecutableOptions = {}): 
   return undefined;
 }
 
+type LocateOptions = { env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform };
+
 /**
- * Locates the user's Claude Code executable (specs/010 research R7): the configured `command`,
- * else `claude` on PATH. On Windows a real `.exe` is preferred over extensionless shims.
+ * Locates a user-installed CLI: the configured `command` (a path, or a name looked up on PATH),
+ * else the first of `names` found on PATH.
  */
-export function locateClaudeCode(
+export function locateCli(
   command: string | undefined,
-  opts: { env?: NodeJS.ProcessEnv; platform?: NodeJS.Platform } = {},
+  names: string[],
+  opts: LocateOptions = {},
 ): string | undefined {
-  const platform = opts.platform ?? process.platform;
   if (command) {
     if (path.isAbsolute(command) || command.includes('/') || command.includes('\\')) {
       return isExecutableFile(command) ? command : undefined;
     }
     return findExecutable(command, opts);
   }
-  if (platform === 'win32') {
-    return findExecutable('claude.exe', opts) ?? findExecutable('claude', opts);
+  for (const name of names) {
+    const found = findExecutable(name, opts);
+    if (found) return found;
   }
-  return findExecutable('claude', opts);
+  return undefined;
+}
+
+/**
+ * Locates the user's Claude Code executable (specs/010 research R7): the configured `command`,
+ * else `claude` on PATH. On Windows only `claude.exe`, then the npm `claude.cmd`: the extensionless
+ * POSIX shim npm installs next to it cannot run there.
+ */
+export function locateClaudeCode(
+  command: string | undefined,
+  opts: LocateOptions = {},
+): string | undefined {
+  const win = (opts.platform ?? process.platform) === 'win32';
+  return locateCli(command, win ? ['claude.exe', 'claude.cmd'] : ['claude'], opts);
+}
+
+/**
+ * Locates the user's Codex CLI (specs/012 research R7). npm installs ship `codex.cmd` next to an
+ * extensionless POSIX shell shim that Windows cannot run, so on Windows only `.exe`/`.cmd` count.
+ */
+export function locateCodex(
+  command: string | undefined,
+  opts: LocateOptions = {},
+): string | undefined {
+  const win = (opts.platform ?? process.platform) === 'win32';
+  return locateCli(command, win ? ['codex.exe', 'codex.cmd'] : ['codex'], opts);
+}
+
+/** `.cmd`/`.bat` shims need cmd.exe; every argument we pass is a flag, a name or a file path. */
+export function spawnSpec(
+  exe: string,
+  args: string[],
+  platform: NodeJS.Platform,
+): { file: string; args: string[]; shell: boolean } {
+  if (platform === 'win32' && /\.(cmd|bat)$/i.test(exe)) {
+    const quote = (a: string) => `"${a.replace(/"/g, '""')}"`;
+    return { file: quote(exe), args: args.map(quote), shell: true };
+  }
+  return { file: exe, args, shell: false };
 }

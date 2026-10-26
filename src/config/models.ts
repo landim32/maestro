@@ -22,6 +22,13 @@ export function modelCatalog(settings: Settings, id: ProviderId): string[] {
   return dedupe([...p.models, p.model]);
 }
 
+const DEFAULT_MODELS: Record<ProviderId, readonly string[]> = {
+  claude: DEFAULTS.claude.models,
+  qwen: DEFAULTS.qwen.models,
+  'claude-code': DEFAULTS.claudeCode.models,
+  codex: DEFAULTS.codex.models,
+};
+
 /** `models` as stored in the raw global file (or the provider default when absent/empty). */
 function rawModels(globalRaw: Json, id: ProviderId): string[] {
   const providers = globalRaw['providers'];
@@ -30,7 +37,7 @@ function rawModels(globalRaw: Json, id: ProviderId): string[] {
   if (Array.isArray(models) && models.length > 0) {
     return dedupe(models.filter((m): m is string => typeof m === 'string'));
   }
-  return [...DEFAULTS[id === 'claude-code' ? 'claudeCode' : id].models];
+  return [...DEFAULT_MODELS[id]];
 }
 
 /**

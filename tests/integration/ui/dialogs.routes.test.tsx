@@ -38,6 +38,7 @@ function memorySettings(initial: Record<string, unknown>) {
         claude: 'env' as const,
         qwen: 'config' as const,
         'claude-code': 'none' as const,
+        codex: 'none' as const,
       },
     }),
   };

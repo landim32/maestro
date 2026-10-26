@@ -49,7 +49,25 @@ describe('loadSettings', () => {
       claude: 'none',
       qwen: 'none',
       'claude-code': 'none',
+      codex: 'none',
     });
+  });
+
+  it('codex credential source is cli only when enabled and the executable exists (specs/012)', () => {
+    const exe = path.join(home, 'codex-bin');
+    fs.writeFileSync(exe, '');
+    writeGlobal({ providers: { codex: { enabled: true, command: exe } } });
+    expect(loadSettings({ cwd, env: env(), platform: 'linux' }).credentialSources.codex).toBe(
+      'cli',
+    );
+    writeGlobal({ providers: { codex: { enabled: true, command: path.join(home, 'nope') } } });
+    expect(loadSettings({ cwd, env: env(), platform: 'linux' }).credentialSources.codex).toBe(
+      'none',
+    );
+    writeGlobal({ providers: { codex: { enabled: false, command: exe } } });
+    expect(loadSettings({ cwd, env: env(), platform: 'linux' }).credentialSources.codex).toBe(
+      'none',
+    );
   });
 
   it('applies defaults for missing fields', () => {
