@@ -61,6 +61,8 @@ export interface ScriptOptions {
   tasksPerRound?: number;
   /** The clarify step asks this ask_user question (default: one question with a recommended option). */
   noClarifyQuestion?: boolean;
+  /** load_skill inputs called at the start of a step's first round, before its usual script (specs/013). */
+  skillCalls?: Partial<Record<string, unknown[]>>;
 }
 
 /**
@@ -93,13 +95,17 @@ export function speckitModel(opts: ScriptOptions = {}) {
     const label = (
       lastUser.display ?? lastUser.content.map((p) => (p.type === 'text' ? p.text : '')).join('')
     ).trim();
-    const sinceUser = msgs
+    let sinceUser = msgs
       .slice(msgs.lastIndexOf(lastUser) + 1)
       .filter((m) => m.role === 'tool').length;
     const lastResult = [...msgs].reverse().find((m) => m.role === 'tool')?.content[0];
     const resultText = lastResult?.type === 'tool_result' ? lastResult.output : '';
     const step = /^\/speckit\.(\w+)/.exec(label)?.[1] ?? 'round';
     if (sinceUser === 0) steps.push(step);
+    const skillCalls = opts.skillCalls?.[step] ?? [];
+    if (sinceUser < skillCalls.length)
+      return tool('k' + sinceUser, 'load_skill', skillCalls[sinceUser]);
+    sinceUser -= skillCalls.length;
     const dir = () => `specs/${feature}`;
 
     switch (step) {

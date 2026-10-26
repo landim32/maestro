@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Maestro is a multi-model AI assistant for the terminal (Claude, Claude Code, Codex, Qwen), written in TypeScript on Node ≥ 22 (ESM) with an Ink 8 / React 19 UI. It hosts GitHub's Spec Kit natively and is developed through it: every feature lives in `specs/NNN-name/` (spec, plan, research, data-model, contracts, quickstart, tasks) and is driven by the `/speckit.*` commands. The `## Active Technologies`, `## Recent Changes` and `Last updated` lines below are rewritten by `/speckit.plan` (`src/speckit/steps/agentContext.ts`); keep those headings verbatim. Everything else is maintained by hand. The project constitution is `.specify/memory/constitution.md` (YAGNI, text-first CLI, testability, credential safety, minimal observability, permanent MIT open source, third-party attribution).
 
-Last updated: 2026-10-25
+Last updated: 2026-10-26
 
 ## Commands
 
@@ -32,6 +32,16 @@ Last updated: 2026-10-25
 **Tools and approval.** Tools declare `kind: 'read' | 'edit' | 'command' | 'question'`; `tools/approval.ts` (pure, adapted from qwen-code) maps `(mode, kind)` to confirm/auto via `needsConfirmation`, with `classifyAction` promoting commands matching `DESTRUCTIVE_PATTERNS` to `destructive`. `runTurn` takes `approvalMode: () => ApprovalMode` (a getter, so Shift+Tab mid-turn applies to the next call) and reports auto-approved actions through `onAutoApproved`. The live mode is `SessionController.approvalMode` (session only, never written to settings); the initial value comes from `tools.approvalMode` / `--approval-mode` / `--yolo`. Tool inputs are untrusted: zod-validate, confine paths with `resolveInsideCwd` (applies in every mode), confirm anything that writes or executes. `ask_user` (`kind: 'question'`) bypasses approval, survives `--no-tools`, and reaches the UI via `ToolContext.ask` → `Session.pendingQuestion` → `controller.questionFlow` (reducer `setup/askUserFlow.ts`) → `AskUserDialog`; free text typed in "Outro…" goes to the model only.
 
 **Turn limits and rate limits.** `tools.maxToolIterations` defaults to `0` = no limit (like Claude Code / qwen-code / gemini-cli); a positive value caps rounds (provider-driven: × `CALLS_PER_ITERATION`). A `rate_limit` error never ends a turn: `runTurn` drops the partial reply, waits `MaestroError.retryAfterMs` (Retry-After via `retryAfterFrom`, or the Claude Code usage-limit reset) or `backoffMs(attempt)` (5 s doubling, capped at `MAX_BACKOFF_MS` = 5 min), announces it (`onNotice` + `onRetry`) and resends the same request, in both tool loops; only a cancellation stops the wait. A `network` error is retried the same way up to `TurnOptions.networkRetries` (default `NETWORK_RETRIES` = 5; the autopilot passes Infinity through `runOverrides`); the CLI providers map connection failures reported as text with `looksLikeNetworkError`. A `tool_use` stop without any tool call (an Anthropic-compatible endpoint that never closes the block; `anthropicProtocol` also recovers calls from `finalMessage().content`) is resent up to `LOST_TOOL_RETRIES` = 2. Tests inject `TurnOptions.sleep`.
+
+**Skills (specs/013).** `src/skills/catalog.ts`:
+
+- `sessionSkills` decides whether to discover: only with `skills.enabled` and `tools.enabled`.
+- `discoverSkills` reads `SKILL.md` one level below `.claude/skills`, `.agents/skills` and `<homeDir>/.claude/skills`, in that precedence. It parses only the header, with the minimal `skills/frontmatter.ts` and no YAML dependency. Skills without a description and `speckit-*` skills are ignored; repeated names are shadowed.
+- The pure `skillsSection` (50 items, 250-character descriptions) goes into `buildSystemPrompt` before the project guidelines.
+
+`tools/loadSkill.ts` (`createLoadSkillTool(catalog)`, `kind: 'read'`) returns the body and the reference list, or one `file` confined by `realpath` to the skill folder. It fills `display.skill`. `toolsFor(settings, { skills })` adds it only for a non-empty catalogue, so without skills the prompt and the tools stay byte for byte unchanged.
+
+`/skills` prints `skillsReport`. The controller logs `skill.load` without content and forwards every tool result to `runOverrides.onToolResult`, which the autopilot driver turns into `skill.load` lines in the `.jsonl`.
 
 **Routes (specs/008).** `settings.routes.<name> = { provider, model, effort?, maxTokens? }`. A missing key means default: `chat` follows the active provider/model, every other route follows `chat`. `routes/catalog.ts` (`routeEntries`, `aliasCommands`, `ROUTE_GUIDANCE`) and `routes/resolve.ts` (`resolveRoute`: forced → command → chat → active, with `fallbacks`) are pure. `SlashCommand.kind` is `'prompt'` for commands that send a prompt (their name is their route) and `'route'` for `/ask` and `/<route>` shortcuts. `controller.submit` resolves the route, warns per fallback, picks `providerFor(id)` (one cached instance per provider; the active provider never changes) and runs `runTurn` with `model`/`overrides`/`route`; replies carry `Message.route`.
 
@@ -75,10 +85,11 @@ src/
 ├── config/       paths, schema (zod), defaults, loader, writer, models, projectContext
 ├── providers/    types, status, registry, anthropicProtocol, claude, qwen, claudeCode + claudeCodeStream + mcpBridge (specs/010), codex + codexStream (specs/012)
 ├── session/      session, turn, commands, controller, systemPrompt, history, activity
-├── tools/        types, approval [qwen-code attrib], askUser [attrib], sandbox, readFile, listDirectory, writeFile, runCommand, registry, diff
+├── tools/        types, approval [qwen-code attrib], askUser [attrib], sandbox, readFile, listDirectory, writeFile, runCommand, loadSkill, registry, diff
 ├── routes/       catalog, resolve (pure)
 ├── setup/        methods, authFlow, modelFlow, askUserFlow, routesFlow (reducers), driver, connectionTest, antCli, claudeCodeCli, codexCli, installHints, dialog
 ├── autopilot/    types, stories, flow (pure reducer), gates, questions, decider, log, report, resume, state, remote, driver (specs/011)
+├── skills/       frontmatter (minimal SKILL.md header parser), catalog (discovery, prompt section, /skills report) (specs/013)
 ├── speckit/      discovery, prompt, preamble, invocation, feature, naming, numbering, templates, git, init, status, service, steps/*
 ├── ui/           App, banner, chips, attachments, selection, frameRecorder, toolDisplay, components/ (ActivityLine, DiffView…), markdown/, dialogs/, hooks/
 └── utils/        mask, errors, tty, logger, clipboard
@@ -89,6 +100,7 @@ specs/NNN-*/      spec, plan, research, data-model, contracts, quickstart, tasks
 
 ## Active Technologies
 
+- 013-native-skills: no new dependencies; `src/skills/` (minimal frontmatter parser, catalog from `.claude/skills`, `.agents/skills`, `~/.claude/skills`), tool `load_skill` confined by `realpath` to the skill folder, `skill.load` events in the autopilot `.jsonl`; settings `skills.enabled`
 - 012-codex-cli-provider: no new dependencies; provider `codex` spawns the user's `codex exec --json` (own tools disabled, `read-only` sandbox) and reuses the specs/010 MCP bridge; settings `providers.codex`
 - 011-speckit-autopilot: no new dependencies; `src/autopilot/` (pure flow/gates/decider + driver), `execFile` for git and `gh`; local state `.specify/autopilot.json` + `.maestro/autopilot/<id>.jsonl` (kept out of commits via .git/info/exclude), versioned `specs/NNN/decisions.md`
 - 009-ai-output-display: no new dependencies; `diff` `structuredPatch` for the structured write diff; `tool_result.display` is in-memory only (never sent to the model nor persisted)
@@ -97,6 +109,7 @@ specs/NNN-*/      spec, plan, research, data-model, contracts, quickstart, tasks
 
 ## Recent Changes
 
+- 013-native-skills: skills (`SKILL.md`) listed in the system prompt by name and description, loaded on demand with `load_skill`, `/skills` for diagnosis, `skill.load` in the autopilot log
 - 012-codex-cli-provider: provider `codex` (user's Codex CLI with the ChatGPT subscription, own tools disabled, tools via the loopback MCP bridge)
 - 011-speckit-autopilot: /autopilot and -p --autopilot run user stories through the whole Spec Kit without interaction, with a decider, gates, per-step commits and resume
 - 009-ai-output-display: activity line (time, tokens), Claude Code style transcript (⏺/⎿), structured write diff in dialog and transcript

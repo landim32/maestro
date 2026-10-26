@@ -12,10 +12,11 @@ import { hasWorkspaceTools, toolsFor } from './tools/registry.js';
 import { formatError, toMaestroError } from './utils/errors.js';
 import { createLogger } from './utils/logger.js';
 import { isInteractive } from './utils/tty.js';
-import { debugLogPath, historyPath } from './config/paths.js';
+import { debugLogPath, historyPath, homeDir } from './config/paths.js';
 import { fileHistoryStore, InputHistory } from './session/history.js';
 import { SpecKitService } from './speckit/service.js';
 import { loadProjectContext } from './config/projectContext.js';
+import { sessionSkills } from './skills/catalog.js';
 import { VERSION } from './version.js';
 
 async function main(argv: string[]): Promise<number> {
@@ -76,7 +77,13 @@ async function main(argv: string[]): Promise<number> {
   ctx.activeId = pf.providerId;
 
   const cwd = process.cwd();
-  const tools = toolsFor(loaded.settings.tools);
+  // Skills (specs/013): discovered once, only when skills and tools are enabled.
+  const skillsHome = homeDir(process.env);
+  const { state: skillsState, catalog: skillCatalog } = sessionSkills(loaded.settings, {
+    cwd,
+    home: skillsHome,
+  });
+  const tools = toolsFor(loaded.settings.tools, { skills: skillCatalog });
   const logger = createLogger({
     enabled: args.debug,
     filePath: debugLogPath(),
@@ -95,6 +102,14 @@ async function main(argv: string[]): Promise<number> {
     tools: tools.length,
     interactive,
     approvalMode: loaded.settings.tools.approvalMode,
+  });
+  logger.log('skills.discover', {
+    state: skillsState,
+    skills: skillCatalog.skills.length,
+    shadowed: skillCatalog.shadowed.length,
+    ignored: skillCatalog.ignored.length,
+    project: skillCatalog.skills.filter((s) => s.source !== 'user').length,
+    user: skillCatalog.skills.filter((s) => s.source === 'user').length,
   });
   const session = new Session({
     cwd,
@@ -116,7 +131,9 @@ async function main(argv: string[]): Promise<number> {
       askUser: tools.some((t) => t.name === 'ask_user'),
       projectContext,
       language: loaded.settings.language,
+      skills: skillCatalog.skills,
     }),
+    skills: { catalog: skillCatalog, state: skillsState, home: skillsHome },
     debug: args.debug,
     interactive: !nonInteractive,
     logger,

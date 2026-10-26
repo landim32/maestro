@@ -225,6 +225,13 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     expect(issuesOf({ speckit: { branch: true } })[0]).toMatch(/^speckit\.branch: unknown key/);
   });
 
+  /** specs/013 contracts/settings.md */
+  it('skills.enabled defaults to true and unknown skills keys are rejected', () => {
+    expect(settingsSchema.parse({}).skills).toEqual({ enabled: true });
+    expect(settingsSchema.parse({ skills: { enabled: false } }).skills.enabled).toBe(false);
+    expect(issuesOf({ skills: { paths: [] } })[0]).toMatch(/^skills\.paths: unknown key/);
+  });
+
   /** contracts/approval-modes.md § 1, § 5 */
   it('tools.approvalMode accepts the four modes and rejects anything else', () => {
     for (const mode of ['default', 'auto-edit', 'auto', 'yolo'] as const) {

@@ -138,3 +138,34 @@ describe('fitArg', () => {
     expect(fitArg('a\nb', 10, 'end', stringWidth)).toBe('a b');
   });
 });
+
+describe('load_skill display (specs/013 contracts/load-skill-tool.md § 5)', () => {
+  it('Skill(name[/file]) and the summary line', () => {
+    expect(describeCall('load_skill', { name: 'revisao-pr' })).toEqual({
+      label: 'Skill',
+      arg: 'revisao-pr',
+      cut: 'middle',
+    });
+    expect(describeCall('load_skill', { name: 'revisao-pr', file: 'references/x.md' }).arg).toBe(
+      'revisao-pr/references/x.md',
+    );
+    const skill = (s: object) => ({
+      skill: { name: 'revisao-pr', source: 'project-claude', ok: true, ...s },
+    });
+    expect(
+      describeResult('load_skill', ok('# Skill', skill({ lines: 120, files: 3 }))).lines,
+    ).toEqual(['120 linhas · 3 arquivos de referência']);
+    expect(
+      describeResult('load_skill', ok('# Skill', skill({ lines: 1, files: 1 }))).lines,
+    ).toEqual(['1 linha · 1 arquivo de referência']);
+    expect(
+      describeResult('load_skill', ok('# Skill file', skill({ file: 'x.md', lines: 12 }))).lines,
+    ).toEqual(['Leu 12 linhas']);
+    const err = describeResult('load_skill', {
+      output: 'unknown skill "x". Available: a',
+      isError: true,
+      display: { skill: { name: 'x', ok: false } },
+    });
+    expect(err.tone).toBe('error');
+  });
+});

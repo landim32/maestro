@@ -2,6 +2,19 @@ import type { z } from 'zod';
 import type { ToolsSettings } from '../config/schema.js';
 import type { ApprovalMode, ToolKind } from './approval.js';
 import type { FileDiff } from './diff.js';
+import type { SkillSource } from '../skills/catalog.js';
+
+/** What a `load_skill` call loaded (specs/013 data-model § 4); feeds the transcript and the autopilot log. */
+export interface SkillLoadDisplay {
+  name: string;
+  /** Absent when the name is unknown. */
+  source?: SkillSource;
+  file?: string;
+  ok: boolean;
+  lines?: number;
+  /** Reference files listed (only without `file`). */
+  files?: number;
+}
 
 /**
  * Display-only metadata of a tool result (specs/009 data-model § 3). Shown in the transcript;
@@ -16,9 +29,11 @@ export interface ToolResultDisplay {
   /** Native Spec Kit step that replaced a script invocation. */
   speckitStep?: string;
   summary?: string;
+  skill?: SkillLoadDisplay;
 }
 
-export type ToolName = 'read_file' | 'list_directory' | 'write_file' | 'run_command' | 'ask_user';
+export type ToolName =
+  'read_file' | 'list_directory' | 'write_file' | 'run_command' | 'ask_user' | 'load_skill';
 
 // ---------------------------------------------------------------- ask_user (contracts/ask-user.md)
 

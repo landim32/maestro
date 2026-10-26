@@ -11,7 +11,9 @@ import { Session } from '../../../src/session/session.js';
 import { bundledAssets } from '../../../src/speckit/assets.js';
 import { systemGit, systemGitCommit } from '../../../src/speckit/git.js';
 import { SpecKitService } from '../../../src/speckit/service.js';
-import { allTools } from '../../../src/tools/registry.js';
+import { allTools, toolsFor } from '../../../src/tools/registry.js';
+import { discoverSkills } from '../../../src/skills/catalog.js';
+import { jsonlPath } from '../../../src/autopilot/log.js';
 import { readRunState } from '../../../src/autopilot/state.js';
 import type { SettingsInput } from '../../../src/config/schema.js';
 import type { Run } from '../../../src/autopilot/types.js';
@@ -44,7 +46,12 @@ const TWO = `${ONE}\n## Despedida\nComo usuário, quero bye(name) que devolve "T
 
 async function setup(
   script: ScriptOptions = {},
-  extra: { settings?: SettingsInput; verify?: number[]; logFile?: string } = {},
+  extra: {
+    settings?: SettingsInput;
+    verify?: number[];
+    logFile?: string;
+    tools?: ReturnType<typeof allTools>;
+  } = {},
 ) {
   const model = speckitModel(script);
   const verify = fakeVerify(extra.verify ?? [0]);
@@ -60,7 +67,7 @@ async function setup(
   const controller = new SessionController({
     session: new Session({ cwd: repo.root, activeProviderId: 'claude' }),
     ctx: makeCtx(extra.settings ?? {}),
-    tools: allTools(),
+    tools: extra.tools ?? allTools(),
     system: 'sys',
     interactive: false,
     providerOverride: () => model.provider,
@@ -121,7 +128,10 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     expect(decisions).toContain('**Escolha:** Olá, nome! (Recommended)');
     expect(decisions).toContain('**Pergunta:** Some checklists have unchecked items.');
     expect(repo.read('specs/001-saudao/spec.md')).toContain('Formato: Olá');
-    expect(r.report).toMatch(/✓ 1\/1 Saudação · 001-saudao/);
+    expect(r.report).toMatch(/✓ 1\. 001-saudao · /);
+    expect(r.report).toContain(
+      '  - Nenhuma tarefa em aberto\nDecisões: specs/001-saudao/decisions.md',
+    );
     expect(progress.some((l) => l.includes('história 1/1 "Saudação" · specify'))).toBe(true);
     // the state file is local: never committed, the tree stays clean
     expect(repo.git('status', '--porcelain')).toBe('');
@@ -347,5 +357,43 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     } finally {
       fs.rmSync(logFile, { force: true });
     }
+  });
+
+  it('skill.load events: story, feature, step, skill, source and ok; no skill content (specs/013 US2)', async () => {
+    repo.write(
+      '.claude/skills/padroes/SKILL.md',
+      '---\nname: padroes\ndescription: Padrões da equipe\n---\nCORPO-SENTINELA\n',
+    );
+    repo.write('historias.md', ONE);
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'stories');
+    const tools = toolsFor(makeCtx({}).settings.tools, {
+      skills: discoverSkills({ cwd: repo.root, home: repo.root + '-sem-home' }),
+    });
+    const a = await setup(
+      { skillCalls: { plan: [{ name: 'padroes' }], implement: [{ name: 'nao-existe' }] } },
+      { tools },
+    );
+    expect((await a.controller.createAutopilot().start('historias.md')).code).toBe(0);
+    const text = fs.readFileSync(jsonlPath(repo.root, s0().id), 'utf8');
+    const events = text
+      .trim()
+      .split('\n')
+      .map((l) => JSON.parse(l) as Record<string, unknown>)
+      .filter((e) => e['event'] === 'skill.load');
+    const feature = s0().stories[0]!.feature;
+    expect(events.map(({ at: _at, ...e }) => e)).toEqual([
+      {
+        event: 'skill.load',
+        story: 1,
+        feature,
+        step: 'plan',
+        skill: 'padroes',
+        source: 'project-claude',
+        ok: true,
+      },
+      { event: 'skill.load', story: 1, feature, step: 'implement', skill: 'nao-existe', ok: false },
+    ]);
+    expect(text).not.toContain('CORPO-SENTINELA');
   });
 });

@@ -1,4 +1,6 @@
 import type { ProjectContext } from '../config/projectContext.js';
+import { skillsSection } from '../skills/catalog.js';
+import type { SkillEntry } from '../skills/catalog.js';
 import { APP_NAME } from '../version.js';
 
 /**
@@ -16,6 +18,8 @@ export function buildSystemPrompt(opts: {
   platform?: NodeJS.Platform;
   /** `settings.language`: every reply in this language (absent = the user's language). */
   language?: string;
+  /** Skills found at startup (specs/013): listed by name and description, loaded on demand. */
+  skills?: SkillEntry[];
 }): string {
   const platform = opts.platform ?? process.platform;
   const language = opts.language ? languageName(opts.language) : undefined;
@@ -48,6 +52,7 @@ export function buildSystemPrompt(opts: {
       '- When you need a decision from the user to continue, call ask_user with concrete options instead of ending your turn with a question; the user can always answer "Other" in free text.',
     );
   }
+  if (opts.toolsEnabled && opts.skills?.length) lines.push('', skillsSection(opts.skills));
   if (opts.projectContext) {
     lines.push(
       '',

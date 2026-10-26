@@ -62,6 +62,11 @@ export function describeCall(
       return { label: 'Write', arg: str(input, 'path') ?? '', cut: 'middle' };
     case 'run_command':
       return { label: commandLabel(opts.platform), arg: str(input, 'command') ?? '', cut: 'end' };
+    case 'load_skill': {
+      const skill = str(input, 'name') ?? '';
+      const file = str(input, 'file');
+      return { label: 'Skill', arg: file ? `${skill}/${file}` : skill, cut: 'middle' };
+    }
     case 'ask_user': {
       const qs = (input as { questions?: Array<{ header?: unknown; question?: unknown }> } | null)
         ?.questions;
@@ -144,6 +149,17 @@ export function describeResult(name: string, part: ResultPart): ResultView {
       const body = /^exit code /.test(out[0] ?? '') ? out.slice(1) : out;
       const view = body.length ? take(body, COMMAND_LINES) : { lines: ['(sem saída)'], more: 0 };
       return withAuto({ tone: 'ok', ...view });
+    }
+    case 'load_skill': {
+      const s = d?.skill;
+      if (!s?.ok) return { tone: 'ok', lines: [out[0] ?? ''], more: 0 };
+      const read = plural(s.lines ?? 0, 'linha', 'linhas');
+      const refs = plural(s.files ?? 0, 'arquivo de referência', 'arquivos de referência');
+      return withAuto({
+        tone: 'ok',
+        lines: [s.file ? `Leu ${read}` : `${read} · ${refs}`],
+        more: 0,
+      });
     }
     case 'ask_user': {
       if (part.output === DECLINED_TEXT) return { tone: 'muted', lines: ['sem resposta'], more: 0 };

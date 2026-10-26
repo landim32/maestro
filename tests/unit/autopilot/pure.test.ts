@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseStories, sectionLikeTitles, specifyText } from '../../../src/autopilot/stories.js';
 import {
   countTasks,
+  openTaskLines,
   criticalCount,
   evaluateGate,
   MAX_ANSWERS,
@@ -187,6 +188,11 @@ describe('gates (contracts/gates.md § 2)', () => {
       open: 1,
       done: 2,
     });
+  });
+  it('openTaskLines', () => {
+    expect(openTaskLines('- [ ] T001 a\r\n  - [X] T002 b\n  * [ ] T003 c\n- [ ] sem id\n')).toEqual(
+      ['- [ ] T001 a', '* [ ] T003 c'],
+    );
   });
 });
 
@@ -370,19 +376,38 @@ describe('report (contracts/autopilot-cli.md § 3)', () => {
       feature: '013-export',
       status: 'stopped',
     });
+    run.stories.push(emptyStory({ title: 'Seção solta', hash: 'c' }));
+    const open = Array.from({ length: 12 }, (_, i) => `- [ ] T${String(i + 1).padStart(3, '0')} x`);
     const text = formatReport(run, {
       decisions: { 1: 4 },
-      decisionFiles: ['specs/012-login/decisions.md'],
+      decisionFiles: { 1: 'specs/012-login/decisions.md', 2: 'specs/013-export/decisions.md' },
+      openTasks: { 1: [], 2: open },
       jsonl: '.maestro/autopilot/x.jsonl',
       lastOutput: 'FAIL a.test.js',
     });
-    expect(text).toContain('Autopiloto 20261025-213000 · historias.md · base main');
-    expect(text).toMatch(/✓ 1\/2 Login · 012-login · 0 turnos · 0s · 4 decisões/);
-    expect(text).toContain('PR: https://x/pull/12');
-    expect(text).toContain('✗ 2/2 Export · 013-export · parou em verify: npm test falhou');
+    const lines = text.split('\n');
+    expect(lines[0]).toBe('Autopiloto 20261025-213000 · historias.md · base main');
+    expect(lines[1]).toMatch(/^✓ 1\. 012-login · 0 turnos · 0s · 4 decisões$/);
+    expect(lines.slice(3, 6)).toEqual([
+      '    PR: https://x/pull/12',
+      '  - Nenhuma tarefa em aberto',
+      'Decisões: specs/012-login/decisions.md',
+    ]);
+    expect(lines[6]).toBe(
+      '✗ 2. 013-export · parou em verify: npm test falhou depois de 3 tentativas de correção',
+    );
     expect(text).toContain('      FAIL a.test.js');
+    const from = lines.indexOf('  - Tarefas em aberto:');
+    expect(lines.slice(from + 1, from + 11)).toEqual(open.slice(0, 10).map((t) => `  ${t}`));
+    expect(lines.slice(from + 11, from + 13)).toEqual([
+      '  - … mais 2 (veja o tasks.md)',
+      'Decisões: specs/013-export/decisions.md',
+    ]);
+    // stories not started yet stay out of the report
+    expect(text).not.toContain('Seção solta');
+    expect(lines.slice(-3, -1)).toEqual(['---', 'Registro: .maestro/autopilot/x.jsonl']);
     expect(text).toContain('Retomar: /autopilot --resume');
-    expect(statusText(run)).toMatch(/stopped · 1\/2 histórias concluídas/);
+    expect(statusText(run)).toMatch(/stopped · 1\/3 histórias concluídas/);
     expect(statusText(undefined)).toBe('Nenhuma execução do autopiloto neste projeto.');
   });
 });
