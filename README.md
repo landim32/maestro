@@ -294,14 +294,18 @@ Códigos de saída: `0` sucesso · `1` erro do provedor (modo `-p`) · `2` uso/c
 
 ### Autopiloto
 
-O autopiloto pega um arquivo de histórias de usuário e leva cada uma por todos os passos do Spec Kit, sem nenhuma interação: `specify → clarify → plan → tasks → analyze → implement → verificação`.
+O autopiloto pega um arquivo de histórias de usuário, ou um prompt, e leva cada história por todos os passos do Spec Kit, sem nenhuma interação: `specify → clarify → plan → tasks → analyze → implement → verificação`.
 
 ```bash
 /autopilot historias.md              # na sessão interativa
+/autopilot crie um CRUD de clientes com nome e e-mail obrigatórios
 /autopilot --resume                  # retoma uma execução interrompida ou parada
 /autopilot --status                  # mostra o estado salvo
 maestro -p --autopilot historias.md  # sem terminal: progresso no stderr, relatório no stdout
+maestro -p "crie um CRUD de clientes" --autopilot
 ```
+
+**Com um prompt**, o texto vira uma história só, que começa pelo `/speckit.specify` desse texto e segue todo o processo. A primeira linha do prompt dá o título. O texto fica salvo em `.maestro/autopilot/<execução>.md`, que é local como o registro, e por isso `/autopilot --resume` retoma igual a um arquivo. O argumento conta como arquivo quando o arquivo existe ou quando é uma palavra só com `/` ou extensão (`historias.md`, `docs/hu`); nesse caso, um arquivo que não existe dá erro em vez de virar prompt.
 
 O arquivo é Markdown, e cada título `## ` é uma história:
 
