@@ -181,6 +181,44 @@ describe('autopilot flow', () => {
     expect(t.state.run.stopped?.reason).toMatch(/teto de 8 turnos/);
   });
 
+  it('by default there is no cap: many turns and hours never stop the story', () => {
+    const free: FlowContext = { ...ctx, settings: makeSettings({}).autopilot };
+    let t = start(run(), free);
+    for (let i = 0; i < 200; i++) {
+      t = onTurn(t.state, free, { ...turn({}, { text: 'Should I go on?' }), ms: 3_600_000 });
+    }
+    expect(t.state.run.status).toBe('active');
+    expect(t.state.run.stopped).toBeUndefined();
+  });
+
+  it('a minutes cap, when set, stops the story', () => {
+    const capped: FlowContext = {
+      ...ctx,
+      settings: makeSettings({ autopilot: { limits: { minutes: 2 } } }).autopilot,
+    };
+    let t = start(run(), capped);
+    for (let i = 0; i < 3; i++) {
+      t = onTurn(t.state, capped, { ...turn({}, { text: 'Should I go on?' }), ms: 60_000 });
+    }
+    expect(t.state.run.stopped?.reason).toMatch(/teto de 2 minutos/);
+  });
+
+  it('resuming a story stopped by a cap starts its usage from zero', () => {
+    const r = run();
+    r.stories[0]!.status = 'stopped';
+    r.stories[0]!.usage = { turns: 9, ms: 9_000_000, inputTokens: 900, outputTokens: 90 };
+    r.stories[0]!.steps.specify.status = 'failed';
+    const s = start(r, ctx);
+    expect(s.state.run.stories[0]!.usage).toEqual({
+      turns: 0,
+      ms: 0,
+      inputTokens: 0,
+      outputTokens: 0,
+    });
+    const t = onTurn(s.state, ctx, turn({}, { text: 'Should I go on?' }));
+    expect(t.state.run.stopped).toBeUndefined();
+  });
+
   it('start resumes at the first step not done and resets a failed step', () => {
     const r = run();
     r.stories[0]!.steps.specify.status = 'done';

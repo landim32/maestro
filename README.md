@@ -301,13 +301,13 @@ Um arquivo sem títulos `##` conta como uma história só. O texto antes do prim
   - A verificação (`autopilot.verify.command`; por padrão, os scripts `test`, `lint` e `build` do `package.json`) tem até `autopilot.verify.maxAttempts` correções.
   - Um portão que falha para a execução, com relatório e o comando de retomada.
 - **Segurança.** Durante a execução, o modo de aprovação é `auto`, nunca `yolo`. Edições e comandos comuns rodam, e comandos destrutivos são recusados. Escritas continuam confinadas à pasta. Nada vai para o remoto, a menos que você ligue `autopilot.push` (push e um PR por história, cada um com base na branch anterior). O merge exige também `autopilot.merge`.
-- **Limites e retomada.** Cada história tem tetos de turnos, tempo e tokens (`autopilot.limits`). O limite de taxa do provedor não para a execução: o turno espera e tenta de novo. O estado fica em `.specify/autopilot.json`, que é local e fica de fora dos commits pelo `.git/info/exclude`. Um Esc, um Ctrl+C ou o limite de uso do provedor interrompem o passo atual. As alterações parciais vão para um `git stash` nomeado, e `/autopilot --resume` recomeça desse passo.
+- **Limites e retomada.** Por padrão o autopiloto não tem teto: ele só para num portão que falha ou no Esc. Se quiser, `autopilot.limits` define tetos por história de turnos (0 ou pelo menos 7), minutos e tokens, com 0 = sem limite. O limite de taxa do provedor não para a execução, porque o turno espera e tenta de novo, e o tempo dessa espera não conta no teto de minutos. Ao retomar, a contagem da história recomeça do zero. O estado fica em `.specify/autopilot.json`, que é local e fica de fora dos commits pelo `.git/info/exclude`. Um Esc, um Ctrl+C ou o limite de uso do provedor interrompem o passo atual. As alterações parciais vão para um `git stash` nomeado, e `/autopilot --resume` recomeça desse passo.
 
 ```json
 {
   "autopilot": {
     "verify": { "command": ["npm test", "npm run lint"], "maxAttempts": 3, "timeoutMs": 600000 },
-    "limits": { "turns": 60, "minutes": 120, "tokens": 0 },
+    "limits": { "turns": 0, "minutes": 0, "tokens": 0 },
     "commitPrefix": "fix:",
     "push": false,
     "merge": false

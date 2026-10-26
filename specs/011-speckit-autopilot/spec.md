@@ -152,7 +152,7 @@ Como usuário, quero rodar o autopiloto em scripts e CI com `maestro -p --autopi
 - **FR-016**: Cada passo concluído MUST gerar um commit na branch da história, com uma mensagem que identifica a história e o passo, no prefixo de commit configurado (padrão `fix:`).
 - **FR-017**: A branch de cada história MUST partir do resultado final da história anterior. A primeira parte da branch em que o autopiloto foi iniciado.
 - **FR-018**: Push e abertura de PR MUST acontecer só com `autopilot.push` ligado. Merge MUST acontecer só com `autopilot.merge` ligado, que exige `autopilot.push`.
-- **FR-019**: O sistema MUST aplicar, por história, tetos de turnos (padrão 60), tempo (padrão 120 minutos) e tokens (padrão: sem teto), além de `tools.maxToolIterations` por turno.
+- **FR-019**: O sistema MUST permitir, por história, tetos opcionais de turnos, tempo e tokens, todos sem limite por padrão (0). A espera por limite de taxa do provedor não conta no teto de tempo, e retomar uma história recomeça a contagem. *(Revisado em 2026-10-26: os padrões eram 60 turnos e 120 minutos, e o usuário pediu que o autopiloto nunca pare sozinho.)*
 - **FR-020**: Os arquivos de decisões e de estado MUST ser escritos só pelo autopiloto. Mudanças feitas neles por turnos do modelo MUST ser descartadas antes do commit.
 
 **Estado, retomada e relatório**

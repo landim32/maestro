@@ -16,7 +16,7 @@ describe('settings.autopilot (data-model § 2)', () => {
     const s = settingsSchema.parse({});
     expect(s.autopilot).toEqual({
       verify: { maxAttempts: 3, timeoutMs: 600000 },
-      limits: { turns: 60, minutes: 120, tokens: 0 },
+      limits: { turns: 0, minutes: 0, tokens: 0 },
       commitPrefix: 'fix:',
       push: false,
       merge: false,
@@ -27,6 +27,10 @@ describe('settings.autopilot (data-model § 2)', () => {
       expect(formatZodIssues(bad.error)).toEqual(['autopilot.merge: merge exige push: true']);
     expect(settingsSchema.safeParse({ autopilot: { merge: true, push: true } }).success).toBe(true);
     expect(settingsSchema.safeParse({ autopilot: { limits: { turns: 3 } } }).success).toBe(false);
+    expect(settingsSchema.safeParse({ autopilot: { limits: { turns: 7 } } }).success).toBe(true);
+    expect(settingsSchema.safeParse({ autopilot: { limits: { minutes: -1 } } }).success).toBe(
+      false,
+    );
     expect(settingsSchema.safeParse({ autopilot: { verify: { maxAttempts: 11 } } }).success).toBe(
       false,
     );
