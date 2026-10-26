@@ -58,6 +58,16 @@ export function renderDecisions(
   return `${out.join('\n')}\n`;
 }
 
+/** Name of the stash holding the partial work of an interrupted step (written and looked up). */
+export function interruptedStashName(
+  runId: string,
+  story: { feature?: string },
+  index: number,
+  step: string,
+): string {
+  return `maestro autopilot ${runId}: ${story.feature ?? `história ${index + 1}`} ${step} interrompido`;
+}
+
 export function decisionsPath(root: string, feature: string): string {
   return path.join(root, 'specs', feature, 'decisions.md');
 }

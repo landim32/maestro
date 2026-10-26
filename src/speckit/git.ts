@@ -100,6 +100,8 @@ export interface GitCommitPort {
   isAncestor(root: string, sha: string, branch: string): boolean;
   /** Stashes all changes (incl. untracked) with a message; false when the tree was clean. */
   stash(root: string, message: string): boolean;
+  /** Re-applies and drops the stash named `message` (clean tree only); false when not applied. */
+  unstash(root: string, message: string): boolean;
 }
 
 export const systemGitCommit: GitCommitPort = {
@@ -126,11 +128,29 @@ export const systemGitCommit: GitCommitPort = {
   isAncestor: (root, sha, branch) =>
     tryRun(root, ['merge-base', '--is-ancestor', sha, branch]) !== undefined,
   stash: (root, message) => stashAll(root, message),
+  unstash: (root, message) => unstashNamed(root, message),
 };
 
 /** Stashes every change (tracked and untracked) with a message; returns false when there was none. */
 export function stashAll(root: string, message: string): boolean {
   if ((tryRun(root, ['status', '--porcelain']) ?? '') === '') return false;
   run(root, ['stash', 'push', '-q', '-u', '-m', message]);
+  return true;
+}
+
+/**
+ * Re-applies the newest stash whose message is `message` and drops it; only on a clean tree, so
+ * the apply cannot conflict. False when there is none, the tree is dirty or the apply fails.
+ */
+export function unstashNamed(root: string, message: string): boolean {
+  if ((tryRun(root, ['status', '--porcelain']) ?? '') !== '') return false;
+  const list = tryRun(root, ['stash', 'list', '--format=%gd%x09%s']) ?? '';
+  const ref = list
+    .split(/\r?\n/)
+    .map((l) => l.split('\t'))
+    .find(([, subject]) => subject !== undefined && subject.endsWith(`: ${message}`))?.[0];
+  if (!ref) return false;
+  if (tryRun(root, ['stash', 'apply', '-q', '--index', ref]) === undefined) return false;
+  tryRun(root, ['stash', 'drop', '-q', ref]);
   return true;
 }

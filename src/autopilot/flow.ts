@@ -4,7 +4,7 @@
  */
 import type { AutopilotSettings } from '../config/schema.js';
 import { evaluateGate, verifyFixPrompt } from './gates.js';
-import type { GateSnapshot } from './gates.js';
+import type { DiskView, GateSnapshot } from './gates.js';
 import { specifyText } from './stories.js';
 import { emptyStep, STEPS } from './types.js';
 import type { Run, StepName, StepRun, Story, StoryRun } from './types.js';
@@ -21,6 +21,8 @@ export interface FlowContext {
   settings: AutopilotSettings;
   /** Clock of the run (ms epoch), used for the time limit. */
   now: number;
+  /** Whether specs/<feature>/spec.md exists: a resumed specify continues that spec. */
+  specOnDisk?: (feature: string) => boolean;
 }
 
 export type NextAction =
@@ -59,15 +61,47 @@ export function commitMessage(prefix: string, story: StoryRun, step: StepName): 
   return `${prefix} autopilot(${num}): ${step}\n\n${story.title}`;
 }
 
+/**
+ * First turn of a specify step restarted by a resume when the feature already exists: continue
+ * from the spec on disk instead of sending the story again (which would create a second feature).
+ */
+export function resumeSpecifyText(feature: string): string {
+  return [
+    `Retomada do autopiloto: o passo specify desta história parou no meio, e a feature já existe em specs/${feature}/.`,
+    `Não crie outra feature nem rode o script de criação. Continue a partir do specs/${feature}/spec.md atual: complete o que faltar segundo o fluxo do /speckit.specify (validação e checklist de qualidade) e termine.`,
+    'Os pontos [NEEDS CLARIFICATION] que restarem ficam para o passo clarify.',
+  ].join('\n');
+}
+
+/**
+ * Records the feature a specify turn created as soon as it is on disk, even when the step then
+ * fails or is interrupted: a resume continues that feature instead of creating another one.
+ */
+export function claimFeature(
+  state: FlowState,
+  snap: { before: DiskView; after: DiskView; branch?: string },
+): FlowState {
+  const feature = snap.after.feature;
+  if (state.step !== 'specify' || cur(state).feature || !feature) return state;
+  if (snap.before.featureDirs.includes(feature)) return state;
+  const s: FlowState = { ...state, run: clone(state.run) };
+  cur(s).feature = feature;
+  if (snap.branch === feature) cur(s).branch = feature;
+  return s;
+}
+
 function enterStep(s: FlowState, ctx: FlowContext): Step {
   const step = curStep(s);
   // 'running' = the process died in the middle of this step (resume of an orphan run).
-  if (step.status === 'failed' || step.status === 'interrupted' || step.status === 'running') {
-    cur(s).steps[s.step] = emptyStep();
-  }
+  const resumed =
+    step.status === 'failed' || step.status === 'interrupted' || step.status === 'running';
+  if (resumed) cur(s).steps[s.step] = { ...emptyStep(), resumed: true };
   cur(s).steps[s.step].status = 'running';
   if (s.step === 'verify') return { state: s, next: { type: 'verify' } };
   const story = ctx.stories[s.story]!;
+  const feature = cur(s).feature;
+  if (resumed && s.step === 'specify' && feature && ctx.specOnDisk?.(feature))
+    return { state: s, next: { type: 'turn', text: resumeSpecifyText(feature), clear: false } };
   return { state: s, next: { type: 'turn', text: initialTurnText(s.step, story), clear: true } };
 }
 
@@ -158,7 +192,7 @@ export function onTurn(state: FlowState, ctx: FlowContext, o: TurnOutcome): Step
   }
 
   if (s.step === 'verify') return fail(s, 'turno inesperado no passo verify');
-  const verdict = evaluateGate({ ...o.snapshot, step: s.step }, step);
+  const verdict = evaluateGate({ ...o.snapshot, step: s.step, claimed: cur(s).feature }, step);
   switch (verdict.kind) {
     case 'advance':
       step.gate = { ok: true, reason: verdict.reason };

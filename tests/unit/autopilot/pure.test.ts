@@ -22,6 +22,9 @@ import type { DiskView, GateSnapshot } from '../../../src/autopilot/gates.js';
 import { detectQuestion } from '../../../src/autopilot/questions.js';
 import {
   buildOptionsRequest,
+  createDecider,
+  DeciderError,
+  matchOption,
   parseOptionsDecision,
   parseTextDecision,
   recommendedOf,
@@ -33,6 +36,7 @@ import { checkResume, resumeBranch } from '../../../src/autopilot/resume.js';
 import { readRunState, writeRunState } from '../../../src/autopilot/state.js';
 import { emptyStory } from '../../../src/autopilot/types.js';
 import type { Decision, Run } from '../../../src/autopilot/types.js';
+import { textProvider } from '../../helpers/fakeProvider.js';
 
 const tmp: string[] = [];
 afterEach(() => {
@@ -89,6 +93,20 @@ const snap = (over: Partial<GateSnapshot>): GateSnapshot => ({
 const fresh = { answers: 0, attempts: 0 };
 
 describe('gates (contracts/gates.md § 2)', () => {
+  it('specify: a resumed step may keep the feature this story created, and only that one', () => {
+    const existing = snap({
+      step: 'specify',
+      before: view({ feature: '006-x', featureDirs: ['006-x'] }),
+      after: view({ feature: '006-x', featureDirs: ['006-x'], spec: { exists: true } }),
+      branch: '006-x',
+    });
+    const resumed = { ...fresh, resumed: true };
+    expect(evaluateGate({ ...existing, claimed: '006-x' }, fresh).kind).toBe('stop');
+    expect(evaluateGate({ ...existing, claimed: '006-x' }, resumed).kind).toBe('advance');
+    expect(evaluateGate(existing, resumed).kind).toBe('stop');
+    expect(evaluateGate({ ...existing, claimed: '005-y' }, resumed).kind).toBe('stop');
+  });
+
   it('interruptions, errors and preflight come first', () => {
     expect(evaluateGate(snap({ stopReason: 'cancelled' }), fresh).kind).toBe('interrupted');
     expect(
@@ -194,6 +212,15 @@ describe('gates (contracts/gates.md § 2)', () => {
     expect(title.length).toBe(PROMPT_TITLE_MAX);
     expect(title.endsWith('…')).toBe(true);
   });
+  it('promptStoriesFile drops the pasted-text wrapper and never takes a tag as the title', () => {
+    const pasted =
+      '<pasted-text id="2" lines="2">\nAlterar o login:\n- e-mail e senha\n</pasted-text>';
+    expect(promptStoriesFile(pasted)).toBe(
+      '## Alterar o login:\n\nAlterar o login:\n- e-mail e senha\n',
+    );
+    const withFile = promptStoriesFile('<file path="a.md">\nconteúdo\n</file>');
+    expect(withFile.startsWith('## conteúdo\n')).toBe(true);
+  });
   it('sectionLikeTitles: one story split in "## " sections vs real stories', () => {
     const doc = parseStories(
       '# HU 002\n\n## 1. História\nquero ver pedidos\n\n## 2. Contexto e objetivo\nx\n\n## 3. Escopo\ny\n\n## 8. Riscos\nz\n',
@@ -251,9 +278,72 @@ describe('decider (contracts/decisions.md)', () => {
       { storyTitle: 'Login', storyBody: 'quero entrar', step: 'clarify', spec: 'x'.repeat(5000) },
       { question: 'Banco?', options: dopts, multi: false },
     );
-    expect(req).toContain('- Postgres (Recommended): padrão do projeto [recomendada]');
+    expect(req).toContain('1. Postgres (Recommended) — padrão do projeto [recomendada]');
+    expect(req).toContain('(1 a 2)');
     expect(req).toContain('Responda: {"choice"');
     expect(req.length).toBeLessThan(4400);
+  });
+  it('matchOption: the same option written another way; the error shows the answer', () => {
+    const lettered = toDecisionOptions([
+      { label: 'A: Manter o Google (Recommended)', description: 'menor escopo' },
+      { label: 'B: Remover o Google', description: 'mais escopo' },
+    ]);
+    const m = (c: string) => matchOption(c, lettered);
+    expect(m('A: Manter o Google (Recommended)')).toBe('A: Manter o Google (Recommended)');
+    expect(m('A: Manter o Google')).toBe('A: Manter o Google (Recommended)');
+    expect(m('"**B: Remover o Google.**"')).toBe('B: Remover o Google');
+    expect(m('B')).toBe('B: Remover o Google');
+    expect(m('Opção B')).toBe('B: Remover o Google');
+    expect(m('Q2: A')).toBe('A: Manter o Google (Recommended)');
+    expect(m('B: Remover')).toBe('B: Remover o Google');
+    expect(m('C')).toBeUndefined();
+    expect(m('Outra coisa')).toBeUndefined();
+    const plain = toDecisionOptions(opts);
+    expect(matchOption('Postgres', plain)).toBe('Postgres (Recommended)');
+    expect(matchOption('2', plain)).toBe('SQLite');
+    expect(matchOption('b)', plain)).toBe('SQLite');
+    expect(matchOption('Po', plain)).toBeUndefined();
+    expect(parseOptionsDecision('{"choice": "MySQL", "rationale": "x"}', plain, false)).toEqual({
+      ok: false,
+      error: 'escolha fora das opções ("MySQL")',
+    });
+  });
+  it('createDecider: numbered answer; the retry says what was wrong; failure keeps the answers', async () => {
+    const q = {
+      question: 'Quem pode criar conta?',
+      options: [
+        { label: 'A: Cadastro aberto (Recommended)', description: 'qualquer e-mail' },
+        { label: 'B: Restrito', description: 'lista ou convite' },
+      ],
+      multi: false,
+    };
+    const c = { storyTitle: 'Login', storyBody: 'quero entrar', step: 'specify' as const };
+    const make = (texts: string[]) => {
+      const fake = textProvider(texts);
+      const decider = createDecider({
+        target: () => ({ provider: fake }),
+        meta: () => ({ story: 1, at: 'agora' }),
+        signal: () => new AbortController().signal,
+      });
+      return { fake, decider };
+    };
+    const first = make([
+      '{"choice": "Aberta", "rationale": "padrão"}',
+      '{"choice": 1, "rationale": "padrão"}',
+    ]);
+    const d = await first.decider.options(c, q);
+    expect(d.choice).toBe('A: Cadastro aberto (Recommended)');
+    const second = JSON.stringify(first.fake.requests[1]!.messages);
+    expect(second).toContain('Sua resposta anterior não serviu: escolha fora das opções');
+    expect(second).toContain('(1 a 2)');
+    const { decider } = make(['{"choice": "Aberta", "rationale": "x"}', 'não sei']);
+    const err = await decider.options(c, q).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(DeciderError);
+    expect((err as DeciderError).detail).toEqual({
+      question: 'Quem pode criar conta?',
+      options: ['A: Cadastro aberto (Recommended)', 'B: Restrito'],
+      answers: ['{"choice": "Aberta", "rationale": "x"}', 'não sei'],
+    });
   });
   it('parses and validates the JSON answer', () => {
     const dopts = toDecisionOptions(opts);
@@ -268,9 +358,10 @@ describe('decider (contracts/decisions.md)', () => {
       choice: 'SQLite',
       rationale: 'Menor.',
     });
-    expect(
-      parseOptionsDecision('{"choice": "MySQL", "rationale": "x"}', dopts, false),
-    ).toMatchObject({ ok: false });
+    expect(parseOptionsDecision('{"choice": "MySQL", "rationale": "x"}', dopts, false)).toEqual({
+      ok: false,
+      error: 'escolha fora das opções ("MySQL")',
+    });
     expect(
       parseOptionsDecision('{"choice": "SQLite", "rationale": ""}', dopts, false),
     ).toMatchObject({ ok: false });
