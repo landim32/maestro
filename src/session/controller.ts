@@ -177,6 +177,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   private overrides: {
     ask?: (request: AskUserRequest) => Promise<AskUserOutcome>;
     confirm?: (action: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
+    networkRetries?: number;
   } = {};
   readonly clock: () => number;
   private readonly random: () => number;
@@ -570,9 +571,11 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     ask?: (request: AskUserRequest) => Promise<AskUserOutcome>;
     confirm?: (action: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
     approvalMode?: ApprovalMode;
+    /** Connection failures retried in a row (the autopilot passes Infinity). */
+    networkRetries?: number;
   }): () => void {
     const previous = { overrides: this.overrides, mode: this.approvalMode };
-    this.overrides = { ask: o.ask, confirm: o.confirm };
+    this.overrides = { ask: o.ask, confirm: o.confirm, networkRetries: o.networkRetries };
     if (o.approvalMode) this.approvalMode = o.approvalMode;
     this.emit('change');
     let restored = false;
@@ -803,6 +806,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
         tools: this.tools,
         toolSettings: this.ctx.settings.tools,
         maxToolIterations: this.ctx.settings.tools.maxToolIterations,
+        networkRetries: this.overrides.networkRetries,
         approvalMode: () => this.approvalMode,
         intercept: this.specKit?.intercept,
         // On the default chat the request looks exactly as before (no explicit model).
@@ -821,7 +825,8 @@ export class SessionController extends EventEmitter<ControllerEvents> {
           feed({ type: 'usage', input, output });
           this.emit('change');
         },
-        // Rate limit: the partial reply is dropped and the request retried after a wait.
+        // Rate limit, connection failure or lost tool call: the partial reply is dropped and the
+        // request retried after a wait.
         onRetry: (waitMs, attempt) => {
           this.lastRetryWaitMs += waitMs;
           this.partialText = '';

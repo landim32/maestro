@@ -33,7 +33,7 @@ import type { RemotePort } from './remote.js';
 import { formatReport } from './report.js';
 import { checkResume, resumeBranch } from './resume.js';
 import { isPidAlive, readRunState, writeRunState } from './state.js';
-import { parseStories } from './stories.js';
+import { parseStories, sectionLikeTitles } from './stories.js';
 import { emptyStory, STEPS } from './types.js';
 import type { Decision, Run, Story } from './types.js';
 
@@ -222,6 +222,19 @@ export class AutopilotDriver {
         `Já existe uma execução ativa (pid ${saved.pid}, iniciada em ${saved.startedAt}).`,
       );
 
+    if (!resuming) {
+      const sections = sectionLikeTitles(stories);
+      if (sections.length >= 2)
+        return refuse(
+          `${inputRel} parece uma única história dividida em seções (${sections
+            .slice(0, 3)
+            .map((t) => `"## ${t}"`)
+            .join(
+              ', ',
+            )}…): cada "## " vira uma história separada. Use "###" nas seções e "##" só no título de cada história.`,
+        );
+    }
+
     if (resuming) {
       const checked = checkResume(
         saved,
@@ -283,6 +296,8 @@ export class AutopilotDriver {
     const decider = this.makeDecider(() => step, stories, root);
     const restore = this.ctl.runOverrides({
       approvalMode: 'auto',
+      // A dropped connection never stops the run: the turn waits and retries (Esc cancels).
+      networkRetries: Number.POSITIVE_INFINITY,
       confirm: async () => false, // only destructive commands ask in "auto"; they are refused (FR-005)
       ask: asAskUserHandler(
         decider,

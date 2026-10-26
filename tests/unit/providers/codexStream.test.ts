@@ -178,8 +178,10 @@ describe('codexError (research R6)', () => {
   });
 
   it('anything else is a provider error; the text always goes through clean()', () => {
-    const e = codexError('stream disconnected sk-secret', (s) => s.replace('sk-secret', '***'));
-    expect(e).toMatchObject({ category: 'provider', message: 'stream disconnected ***' });
+    const net = codexError('stream disconnected before completion', (s) => s);
+    expect(net).toMatchObject({ category: 'network', providerId: 'codex' });
+    const e = codexError('something odd sk-secret', (s) => s.replace('sk-secret', '***'));
+    expect(e).toMatchObject({ category: 'provider', message: 'something odd ***' });
   });
 
   it('retry-after parsing', () => {

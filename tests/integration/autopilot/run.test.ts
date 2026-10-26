@@ -146,6 +146,12 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'y');
     r = await controller.createAutopilot().start('vazio.md');
     expect(r.report).toMatch(/Nenhuma história/);
+    repo.write('hu.md', '# HU\n\n## 1. História\nquero\n\n## 2. Contexto\nx\n\n## 3. Escopo\ny\n');
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'z');
+    r = await controller.createAutopilot().start('hu.md');
+    expect(r).toMatchObject({ code: 2 });
+    expect(r.report).toMatch(/parece uma única história dividida em seções .*Use "###" nas seções/);
   });
 
   it('verification: fixes until it passes, or stops after maxAttempts with the output', async () => {

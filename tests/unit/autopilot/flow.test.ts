@@ -135,6 +135,29 @@ describe('autopilot flow', () => {
     expect(s.next.type).toBe('commit');
   });
 
+  it('implement without marked tasks: two reminders, progress resets them, then stop', () => {
+    let s = at('implement');
+    const none = () => turn({ openTasks: 3, doneTasks: 0 }, { step: 'implement' });
+    s = onTurn(s.state, ctx, none());
+    expect(s.next).toMatchObject({ type: 'turn', clear: false });
+    expect(s.next.type === 'turn' && s.next.text).toMatch(/Marque com \[X\]/);
+    s = onTurn(s.state, ctx, none());
+    expect(s.next.type).toBe('turn');
+    // progress: "continue" and the reminders start over
+    s = onTurn(s.state, ctx, turn({ openTasks: 2, doneTasks: 1 }, { step: 'implement' }));
+    expect(s.next).toEqual({ type: 'turn', text: 'continue', clear: false });
+    const stuck = () =>
+      turn({ openTasks: 2, doneTasks: 1 }, { step: 'implement' }, { doneTasks: 1 });
+    s = onTurn(s.state, ctx, stuck());
+    s = onTurn(s.state, ctx, stuck());
+    expect(s.next.type).toBe('turn');
+    s = onTurn(s.state, ctx, stuck());
+    expect(s.state.run.stopped).toMatchObject({
+      step: 'implement',
+      reason: 'sem progresso (1/3 tarefas) depois de 2 lembretes',
+    });
+  });
+
   it('verify: fix in the implement history, retry, stop after maxAttempts', () => {
     let s = at('verify');
     expect(s.next).toEqual({ type: 'verify' });
@@ -217,6 +240,25 @@ describe('autopilot flow', () => {
     });
     const t = onTurn(s.state, ctx, turn({}, { text: 'Should I go on?' }));
     expect(t.state.run.stopped).toBeUndefined();
+  });
+
+  it('resume of an orphan run (process died): the running step starts over', () => {
+    const r = run();
+    r.stories[0]!.status = 'running';
+    r.stories[0]!.steps.specify.status = 'done';
+    r.stories[0]!.steps.clarify = {
+      ...r.stories[0]!.steps.clarify,
+      status: 'running',
+      answers: 3,
+      rounds: 7,
+    };
+    const s = start(r, ctx);
+    expect(s.next).toEqual({ type: 'turn', text: '/speckit.clarify', clear: true });
+    expect(s.state.run.stories[0]!.steps.clarify).toMatchObject({
+      status: 'running',
+      answers: 0,
+      rounds: 0,
+    });
   });
 
   it('start resumes at the first step not done and resets a failed step', () => {

@@ -106,6 +106,8 @@ export type GateVerdict =
   | { kind: 'question'; question: string; reason: string }
   /** Send a fix prompt in the same step (analyze CRITICAL, failed verification). */
   | { kind: 'fix'; prompt: string; reason: string }
+  /** implement ended without marking any task: ask to mark the finished ones and continue. */
+  | { kind: 'nudge'; prompt: string; reason: string }
   | { kind: 'stop'; reason: string }
   /** Cancelled or provider usage limit: resumable, not a failure. */
   | { kind: 'interrupted'; reason: string };

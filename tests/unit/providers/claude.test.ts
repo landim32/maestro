@@ -140,6 +140,38 @@ describe('claude provider — streaming', () => {
     });
   });
 
+  it('a tool_use block never closed by the endpoint is recovered from the final message', async () => {
+    mock.scriptStreams([
+      {
+        events: [
+          {
+            type: 'content_block_start',
+            index: 0,
+            content_block: { type: 'tool_use', id: 'toolu_9', name: 'read_file', input: {} },
+          },
+          {
+            type: 'content_block_delta',
+            index: 0,
+            delta: { type: 'input_json_delta', partial_json: '{"path":"a.txt"}' },
+          },
+        ],
+        final: {
+          stop_reason: 'tool_use',
+          content: [
+            { type: 'tool_use', id: 'toolu_9', name: 'read_file', input: { path: 'a.txt' } },
+          ],
+        },
+      },
+    ]);
+    const p = createClaudeProvider(makeCtx());
+    const events = await drain(p.stream(req()));
+    expect(events).toEqual([
+      { type: 'tool_call', callId: 'toolu_9', name: 'read_file', input: { path: 'a.txt' } },
+      { type: 'usage', inputTokens: 11, outputTokens: 7 },
+      { type: 'done', stopReason: 'tool_use', detail: undefined },
+    ]);
+  });
+
   it('accumulates input_json_delta and emits tool_call with parsed input, then done tool_use', async () => {
     mock.scriptStreams([
       {

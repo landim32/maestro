@@ -3,7 +3,7 @@
  * stdin prompt, the `codex exec --json` event parser and the error mapping. Every decision here
  * was validated with Codex CLI 0.161.0 (research.md).
  */
-import { MaestroError } from '../utils/errors.js';
+import { looksLikeNetworkError, MaestroError } from '../utils/errors.js';
 import { renderHistory } from './claudeCodeStream.js';
 import type { ContentPart, Message, ProviderEvent } from './types.js';
 import type { Effort } from '../config/schema.js';
@@ -320,6 +320,12 @@ export function codexError(
       hint: CODEX_LOGIN_HINT,
     });
   }
+  if (looksLikeNetworkError(text))
+    return new MaestroError({
+      providerId: 'codex',
+      category: 'network',
+      message: `falha de conexão do Codex: ${text}`,
+    });
   return new MaestroError({ providerId: 'codex', category: 'provider', message: text });
 }
 

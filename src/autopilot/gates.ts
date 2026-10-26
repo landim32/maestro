@@ -9,6 +9,11 @@ import type { GateVerdict, StepName, StepRun } from './types.js';
 export const MAX_ANSWERS = 3;
 /** Fix rounds allowed for analyze (FR-012). */
 export const MAX_ANALYZE_FIXES = 1;
+/** implement turns in a row without a marked task before the step stops. */
+export const MAX_IMPLEMENT_NUDGES = 2;
+
+export const IMPLEMENT_NUDGE_PROMPT =
+  'Nenhuma tarefa nova foi marcada como concluída em tasks.md. Marque com [X] as tarefas que você já concluiu e continue a implementação das restantes.';
 
 export interface ArtifactInfo {
   exists: boolean;
@@ -148,7 +153,17 @@ export function evaluateGate(
         return { kind: 'advance', reason: `${total} tarefas concluídas` };
       if (a.doneTasks > s.before.doneTasks)
         return { kind: 'continue', reason: `${a.doneTasks}/${total} tarefas` };
-      return { kind: 'stop', reason: `sem progresso (${a.doneTasks}/${total} tarefas)` };
+      // Work may have been done without ticking tasks.md (or the turn ended early): remind first.
+      if (run.attempts < MAX_IMPLEMENT_NUDGES)
+        return {
+          kind: 'nudge',
+          prompt: IMPLEMENT_NUDGE_PROMPT,
+          reason: `nenhuma tarefa marcada (${a.doneTasks}/${total})`,
+        };
+      return {
+        kind: 'stop',
+        reason: `sem progresso (${a.doneTasks}/${total} tarefas) depois de ${MAX_IMPLEMENT_NUDGES} lembretes`,
+      };
     }
   }
 }

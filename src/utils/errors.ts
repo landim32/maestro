@@ -67,6 +67,13 @@ const NETWORK_CODES = new Set([
   'UND_ERR_SOCKET',
 ]);
 
+/** Connection failures that the CLI providers (Claude Code, Codex) only report as text. */
+export function looksLikeNetworkError(text: string): boolean {
+  return /stream disconnected|connection (?:error|refused|reset|closed|timed out)|network error|socket hang up|fetch failed|request timed out|ECONNRESET|ECONNREFUSED|ENOTFOUND|ETIMEDOUT|EAI_AGAIN/i.test(
+    text,
+  );
+}
+
 function errorCode(err: unknown): string | undefined {
   if (typeof err === 'object' && err !== null) {
     const code = (err as { code?: unknown }).code;
