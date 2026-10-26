@@ -2,7 +2,7 @@
 
 Assistente de IA para o terminal com suporte a múltiplos modelos. Hoje é um chat de linha de comando no estilo do Claude Code e do qwen code, com ferramentas básicas de workspace. Amanhã será um orquestrador de agentes; a arquitetura de provedores plugáveis já foi desenhada para isso.
 
-- Provedores: **Claude** pela API da Anthropic (consome créditos de API), **Claude Code** (usa o Claude Code instalado e logado com a sua assinatura do claude.ai) e **Qwen** (Alibaba Cloud DashScope). Ative e configure cada um em `settings.json` ou com `/auth`.
+- Provedores: **Claude** pela API da Anthropic (consome créditos de API), **Claude Code** (usa o Claude Code instalado e logado com a sua assinatura do claude.ai), **Codex** (usa o Codex CLI instalado e logado com a sua conta do ChatGPT) e **Qwen** (Alibaba Cloud DashScope). Ative e configure cada um em `settings.json` ou com `/auth`.
 - Sessão interativa com streaming, histórico de conversa, troca de provedor a quente (`/model`), cancelamento com Esc.
 - Ferramentas: ler arquivos, listar diretórios, escrever arquivos e executar comandos, sempre confinadas à pasta atual. Quatro modos de aprovação (Shift+Tab alterna) decidem o que pede sua confirmação; `ask_user` deixa o modelo fazer perguntas de múltipla escolha.
 - Modo não interativo (`maestro -p "..."`) para scripts.
@@ -67,6 +67,18 @@ Como funciona: o Claude Code roda sem nenhuma ferramenta própria, sem os seus s
 
 > **Ressalva sobre os termos da Anthropic.** Os [termos do Claude Code](https://code.claude.com/docs/en/legal-and-compliance) proíbem aplicativos de terceiros de oferecer login do claude.ai e de coletar ou repassar credenciais da assinatura, e permitem que o usuário use o binário original do Claude Code com a própria assinatura. O provedor `claude-code` foi desenhado para ficar desse lado da linha: ele só executa o Claude Code que você instalou e logou. Os termos não tratam explicitamente de uma ferramenta que chama o Claude Code dessa forma; avalie se esse uso é adequado ao seu caso e, se precisar de certeza, consulte a Anthropic. Para uso garantidamente suportado dentro do Maestro, use o provedor `claude` com créditos de API.
 
+**Codex (assinatura do ChatGPT).** O provedor `codex` atende cada pedido executando o [Codex CLI](https://github.com/openai/codex) que você instalou e logou, no modo não interativo (`codex exec --json`). Quem cuida do login é o próprio Codex: com o login pela conta do ChatGPT, o uso entra na cota da sua assinatura, sem chave de API. O Maestro nunca lê, guarda, pede ou repassa credenciais do ChatGPT ou da OpenAI, e não inicia login nenhum.
+
+1. Instale o Codex (`npm install -g @openai/codex`, versão 0.161.0 ou mais nova) e rode `codex login` num terminal com a sua conta do ChatGPT.
+2. No Maestro, `/auth` → **Codex**: o Maestro localiza o executável, confere a versão, consulta `codex login status` (só o método de login), habilita o provedor e oferece ativá-lo. Um login por chave de API é aceito, com o aviso de que consome créditos da API da OpenAI.
+3. Use `/model codex` (ou `/model codex gpt-5.6-terra`), `maestro --provider codex`, ou aponte rotas para ele em `/routes`.
+
+Como funciona: o Codex roda com as ferramentas próprias desligadas (shell, edição, imagens, navegador, plugins, subagentes, busca na web), com o sandbox `read-only` dele como segunda barreira, sem a sua configuração (`~/.codex/config.toml`), regras e servidores MCP, e sem gravar a sessão. As ferramentas do Maestro chegam a ele pelo mesmo servidor MCP local do `claude-code` (127.0.0.1, porta e token aleatórios por pedido; o token vai por variável de ambiente, nunca na linha de comando), então valem os modos de aprovação, o diálogo de confirmação com diff, o confinamento à pasta e os passos nativos do Spec Kit. O prompt do Maestro substitui as instruções do Codex. `OPENAI_API_KEY` e `CODEX_API_KEY` são removidas do ambiente do processo. Quando a assinatura atinge o limite de uso, o Maestro espera e tenta de novo, como nos outros provedores.
+
+Limitações: o texto chega em blocos (uma mensagem por vez), não letra a letra; `effort` vale (`model_reasoning_effort`), `maxTokens` não se aplica; os modelos disponíveis dependem da sua conta (padrão `gpt-6-luna`, lista `gpt-6-luna`, `gpt-5.6-terra`, `gpt-5.6-luna`). Uma versão do Codex anterior à 0.161.0 é recusada com o aviso para atualizar, em vez de rodar sem as garantias acima.
+
+`providers.codex` aceita `enabled`, `model`, `models`, `effort` e `command` (caminho do executável, se `codex` não estiver no PATH).
+
 ## Configuração
 
 Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USERPROFILE%\.maestro\settings.json`) com comentários. Um `./.maestro/settings.json` na pasta do projeto sobrescreve o global, chave a chave. Precedência: argumentos > variáveis de ambiente > projeto > global.
@@ -93,6 +105,12 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
       "enabled": false,
       "model": "claude-opus-5-5",
       "models": ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"],
+      "effort": "medium"
+    },
+    "codex": {
+      "enabled": false,
+      "model": "gpt-6-luna",
+      "models": ["gpt-6-luna", "gpt-5.6-terra", "gpt-5.6-luna"],
       "effort": "medium"
     }
   },
@@ -130,6 +148,7 @@ Variáveis reconhecidas: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC
 maestro                              # sessão interativa
 maestro --provider qwen              # força um provedor nesta sessão
 maestro --provider claude-code       # usa o Claude Code logado (assinatura) nesta sessão
+maestro --provider codex             # usa o Codex logado (conta do ChatGPT) nesta sessão
 maestro --model claude-sonnet-5-5    # força um modelo nesta sessão
 maestro -p "explique src/index.ts"   # uma pergunta, resposta em stdout, sai
 echo "resuma isto" | maestro -p -    # prompt via stdin

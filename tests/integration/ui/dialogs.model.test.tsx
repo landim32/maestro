@@ -31,7 +31,7 @@ function mount(
   const qwen = textProvider(['from qwen'], { id: 'qwen' });
   const ui = mountApp({
     columns: 100,
-    rows: 30,
+    rows: 36,
     providers: { claude, qwen },
     settings: opts.settings ?? (qwenConfigured ? QWEN_ON : {}),
     credentials: { credentials: { claude: 'profile', qwen: qwenConfigured ? 'config' : 'none' } },
@@ -118,8 +118,8 @@ describe('/model selector — grouped catalogue (US2)', () => {
     const ui = mount({ qwenConfigured: false });
     await openModel(ui);
     expect(ui.lastFrame()).toContain('qwen · não configurado — configure com /auth');
-    await press(ui, KEYS.down, 3); // haiku → (qwen and claude-code rows skipped) → custom entry
-    expect(flowOf(ui)).toMatchObject({ step: 'list', selected: 9 });
+    await press(ui, KEYS.down, 3); // haiku → (qwen, claude-code and codex rows skipped) → custom entry
+    expect(flowOf(ui)).toMatchObject({ step: 'list', selected: 12 });
   });
 
   it('a model added to providers.<id>.models in the file shows up in the list', async () => {

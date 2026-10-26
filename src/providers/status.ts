@@ -5,6 +5,7 @@ export const DISPLAY_NAMES: Record<ProviderId, string> = {
   claude: 'Claude (Anthropic API · consome créditos de API)',
   qwen: 'Qwen (Alibaba Cloud)',
   'claude-code': 'Claude Code (assinatura do claude.ai)',
+  codex: 'Codex (assinatura do ChatGPT)',
 };
 
 /** Short billing note shown next to a provider in menus (specs/010 US3). */
@@ -12,6 +13,7 @@ export const BILLING_NOTES: Record<ProviderId, string> = {
   claude: 'API · consome créditos',
   qwen: 'API',
   'claude-code': 'assinatura do Claude Code',
+  codex: 'assinatura do ChatGPT pelo Codex',
 };
 
 export const CREDENTIAL_HINTS: Record<ProviderId, string> = {
@@ -19,6 +21,8 @@ export const CREDENTIAL_HINTS: Record<ProviderId, string> = {
   qwen: 'Qwen API key missing. Set DASHSCOPE_API_KEY or providers.qwen.apiKey in settings.json.',
   'claude-code':
     'Claude Code não encontrado. Instale o Claude Code, faça login nele e use /auth → Claude Code (ou defina providers.claude-code.command).',
+  codex:
+    'Codex não encontrado. Instale o Codex CLI, faça login nele (codex login) e use /auth → Codex (ou defina providers.codex.command).',
 };
 
 /** Computes a provider's status from settings + environment; never touches the network. */
@@ -29,7 +33,7 @@ export function describeProvider(id: ProviderId, ctx: ProviderContext): Provider
   const missing: string[] = [];
 
   let maskedKey: string | undefined;
-  if (id === 'claude-code') {
+  if (id === 'claude-code' || id === 'codex') {
     // The CLI holds the login; Maestro only knows whether the executable was found.
     if (credentialSource === 'none') missing.push('cli');
   } else if (id === 'claude') {

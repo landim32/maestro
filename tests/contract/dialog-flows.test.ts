@@ -49,6 +49,7 @@ describe('contract: dialog flows (contracts/dialog-flows.md)', () => {
       'Claude Auth Login',
       'Qwen',
       'Claude Code',
+      'Codex',
     ]);
   });
 

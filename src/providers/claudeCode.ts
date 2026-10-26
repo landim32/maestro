@@ -13,7 +13,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import type { ChildProcess } from 'node:child_process';
 import { MaestroError } from '../utils/errors.js';
 import { redact } from '../utils/mask.js';
-import { killTree, locateClaudeCode } from '../utils/process.js';
+import { killTree, locateClaudeCode, spawnSpec } from '../utils/process.js';
 import {
   buildArgs,
   buildUserMessage,
@@ -50,19 +50,6 @@ export function childEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const out: NodeJS.ProcessEnv = { ...env, MCP_TOOL_TIMEOUT: String(MCP_TOOL_TIMEOUT_MS) };
   for (const k of STRIPPED_ENV) delete out[k];
   return out;
-}
-
-/** `.cmd`/`.bat` shims need cmd.exe; every argument we pass is a flag, a name or a file path. */
-function spawnSpec(
-  exe: string,
-  args: string[],
-  platform: NodeJS.Platform,
-): { file: string; args: string[]; shell: boolean } {
-  if (platform === 'win32' && /\.(cmd|bat)$/i.test(exe)) {
-    const quote = (a: string) => `"${a.replace(/"/g, '""')}"`;
-    return { file: quote(exe), args: args.map(quote), shell: true };
-  }
-  return { file: exe, args, shell: false };
 }
 
 function notFound(): MaestroError {

@@ -39,11 +39,13 @@ describe('authFlow — menu', () => {
         'claude-login',
         'qwen',
         'claude-code',
+        'codex',
       ]);
       expect(m.items.map((i) => i.status)).toEqual([
         'active',
         'not_configured',
         'configured',
+        'not_configured',
         'not_configured',
       ]);
       expect(m.selected).toBe(0);
@@ -53,9 +55,16 @@ describe('authFlow — menu', () => {
   });
   it('navigates circularly and closes on back/cancel', () => {
     const m = menu();
-    expect(run(m, { type: 'up' })).toMatchObject({ selected: 3 });
+    expect(run(m, { type: 'up' })).toMatchObject({ selected: 4 });
     expect(
-      run(m, { type: 'down' }, { type: 'down' }, { type: 'down' }, { type: 'down' }),
+      run(
+        m,
+        { type: 'down' },
+        { type: 'down' },
+        { type: 'down' },
+        { type: 'down' },
+        { type: 'down' },
+      ),
     ).toMatchObject({
       selected: 0,
     });
@@ -235,7 +244,7 @@ describe('authFlow — testing / saving / activation', () => {
     );
     expect(back.step === 'menu' && back.items.length).toBe(0);
     const refreshed = refreshMenu(back, statuses);
-    expect(refreshed.step === 'menu' && refreshed.items.length).toBe(4);
+    expect(refreshed.step === 'menu' && refreshed.items.length).toBe(5);
   });
 });
 

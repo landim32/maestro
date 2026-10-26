@@ -45,6 +45,11 @@ export const DEFAULTS = {
     models: ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5'],
     effort: 'medium',
   },
+  codex: {
+    model: 'gpt-6-luna',
+    models: ['gpt-6-luna', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+    effort: 'medium',
+  },
   tools: {
     enabled: true,
     commandTimeoutMs: 60_000,
@@ -107,6 +112,14 @@ export const INITIAL_SETTINGS = {
       model: DEFAULTS.claudeCode.model,
       models: [...DEFAULTS.claudeCode.models],
       effort: DEFAULTS.claudeCode.effort,
+    },
+    codex: {
+      _comment:
+        'Uses the Codex CLI installed and logged in on this machine (your ChatGPT subscription, no API key). Maestro never reads its credentials. Enable with /auth -> Codex. command: optional path to the codex executable.',
+      enabled: false,
+      model: DEFAULTS.codex.model,
+      models: [...DEFAULTS.codex.models],
+      effort: DEFAULTS.codex.effort,
     },
   },
   tools: {

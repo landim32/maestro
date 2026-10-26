@@ -10,6 +10,14 @@ import {
 } from './claudeCodeCli.js';
 import type { ClaudeCodeCli } from './claudeCodeCli.js';
 import { LOGIN_HINT } from '../providers/claudeCodeStream.js';
+import { CODEX_INSTALL_HINTS, createCodexCli } from './codexCli.js';
+import type { CodexCli } from './codexCli.js';
+import {
+  CODEX_LOGIN_HINT,
+  CODEX_UPDATE_HINT,
+  MIN_CODEX_VERSION,
+  versionAtLeast,
+} from '../providers/codexStream.js';
 import { authFlowReducer, effectsFor, initialAuthFlow, refreshMenu } from './authFlow.js';
 import type { AuthFlowEvent, AuthFlowState } from './authFlow.js';
 import { testConnection as defaultTestConnection } from './connectionTest.js';
@@ -32,6 +40,8 @@ export interface SetupDeps {
   ant: AntCli;
   /** Claude Code CLI (specs/010): located and queried, never logged in by Maestro. */
   claudeCode: ClaudeCodeCli;
+  /** Codex CLI (specs/012): located and queried, never logged in by Maestro. */
+  codex: CodexCli;
   env: NodeJS.ProcessEnv;
   platform: NodeJS.Platform;
 }
@@ -46,6 +56,7 @@ export class SetupDriver {
   private loginRun?: LoginRun;
   private antPath?: string;
   private claudeCodePath?: string;
+  private codexPath?: string;
   private generation = 0;
 
   constructor(
@@ -58,6 +69,7 @@ export class SetupDriver {
       testConnection: deps.testConnection ?? defaultTestConnection,
       ant: deps.ant ?? createAntCli({ env, platform }),
       claudeCode: deps.claudeCode ?? createClaudeCodeCli({ env, platform }),
+      codex: deps.codex ?? createCodexCli({ env, platform }),
       env,
       platform,
     };
@@ -272,6 +284,16 @@ export class SetupDriver {
           });
           return;
         }
+        if (state.step === 'login.detect' && state.method.id === 'codex') {
+          const exe = this.deps.codex.locate(this.ctl.settings.providers.codex.command);
+          this.codexPath = exe;
+          this.dispatchAuth({
+            type: 'antDetected',
+            found: Boolean(exe),
+            hints: CODEX_INSTALL_HINTS,
+          });
+          return;
+        }
         const loc = this.deps.ant.locate();
         this.antPath = loc?.path;
         this.dispatchAuth({
@@ -285,6 +307,10 @@ export class SetupDriver {
       case 'runLogin': {
         if (state.step === 'login.running' && state.method.id === 'claude-code') {
           this.checkClaudeCode(stillCurrent);
+          return;
+        }
+        if (state.step === 'login.running' && state.method.id === 'codex') {
+          this.checkCodex(stillCurrent);
           return;
         }
         if (!this.antPath) {
@@ -385,6 +411,73 @@ export class SetupDriver {
       }
       finish(true, undefined, warnings);
     });
+  }
+
+  /**
+   * `/auth` → Codex (specs/012 FR-012, research R9): reads `codex --version` and
+   * `codex login status` (method only) and enables the provider when Codex is signed in.
+   * Maestro never starts `codex login` and never opens Codex's credential files.
+   */
+  private checkCodex(stillCurrent: () => boolean): void {
+    const exe = this.codexPath;
+    const finish = (ok: boolean, reason: string | undefined, warnings: string[]) => {
+      if (this.ctl.dialog?.type === 'auth' && this.ctl.dialog.flow.step === 'login.running') {
+        this.dispatchAuth({ type: 'loginExit', ok, reason, warnings });
+      }
+    };
+    if (!exe) {
+      finish(false, 'Codex não localizado', []);
+      return;
+    }
+    void (async () => {
+      const version = await this.deps.codex.readVersion(exe).catch(() => undefined);
+      if (!stillCurrent()) return;
+      if (!version || !versionAtLeast(version, MIN_CODEX_VERSION)) {
+        this.ctl.logger.log('setup.codex', { ok: false, version: version ?? null });
+        finish(
+          false,
+          `${version ? `versão ${version} não suportada` : 'versão desconhecida'}. ${CODEX_UPDATE_HINT}`,
+          [],
+        );
+        return;
+      }
+      const status = await this.deps.codex.readLoginStatus(exe);
+      if (!stillCurrent()) return;
+      if ('error' in status) {
+        this.ctl.logger.log('setup.codex', { ok: false, version });
+        finish(false, status.error, []);
+        return;
+      }
+      this.ctl.logger.log('setup.codex', {
+        ok: status.loggedIn,
+        method: status.method ?? null,
+        version,
+      });
+      if (!status.loggedIn) {
+        finish(false, `o Codex não está logado. ${CODEX_LOGIN_HINT}`, []);
+        return;
+      }
+      try {
+        this.ctl.writeSettings([{ path: 'providers.codex.enabled', value: true }]);
+      } catch (err) {
+        finish(false, err instanceof MaestroError ? err.message : String(err), []);
+        return;
+      }
+      this.ctl.reloadSettings();
+      const how =
+        status.method === 'chatgpt'
+          ? 'conta do ChatGPT'
+          : status.method === 'api-key'
+            ? 'chave de API'
+            : 'outro método';
+      const warnings = [`Codex ${version} logado (${how}).`];
+      if (status.method === 'api-key') {
+        warnings.push(
+          'Este login do Codex é por chave de API: o uso consome créditos da API da OpenAI. Rode `codex login` com a sua conta do ChatGPT para usar a assinatura.',
+        );
+      }
+      finish(true, undefined, warnings);
+    })();
   }
 
   /** Builds and writes the settings patch for a fields method; returns warnings. */

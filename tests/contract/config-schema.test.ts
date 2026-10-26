@@ -117,6 +117,29 @@ describe('contract: settings.json schema (contracts/config-schema.md)', () => {
     expect(issuesOf({ ui: { mouse: 1 } })[0]).toMatch(/^ui\.mouse: /);
   });
 
+  it('providers.codex: disabled by default, strict, optional non-empty command (specs/012)', () => {
+    const r = settingsSchema.parse({});
+    expect(r.providers.codex).toEqual({
+      enabled: false,
+      model: 'gpt-6-luna',
+      models: ['gpt-6-luna', 'gpt-5.6-terra', 'gpt-5.6-luna'],
+      effort: 'medium',
+    });
+    expect(
+      issuesOf({ providers: { codex: { enabled: true, command: 'C:/bin/codex.exe' } } }),
+    ).toEqual([]);
+    expect(issuesOf({ providers: { codex: { command: '' } } })[0]).toMatch(
+      /^providers.codex.command: /,
+    );
+    expect(issuesOf({ providers: { codex: { apiKey: 'x' } } })).toContain(
+      'providers.codex.apiKey: unknown key',
+    );
+    expect(issuesOf({ activeProvider: 'codex' })).toEqual([]);
+    expect(
+      issuesOf({ routes: { chat: { provider: 'codex', model: 'gpt-5.6-terra', effort: 'high' } } }),
+    ).toEqual([]);
+  });
+
   it('rejects unknown keys at any level with the full path', () => {
     expect(issuesOf({ foo: 1 })).toContain('foo: unknown key');
     expect(issuesOf({ providers: { qwen: { apiKeyy: 'x' } } })).toContain(

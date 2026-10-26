@@ -11,7 +11,7 @@ import type { QwenProtocol } from '../config/defaults.js';
 import type { Settings } from '../config/schema.js';
 import type { ProviderId, ProviderStatus } from '../providers/types.js';
 
-export type MethodId = 'claude-api' | 'claude-login' | 'claude-code' | 'qwen';
+export type MethodId = 'claude-api' | 'claude-login' | 'claude-code' | 'codex' | 'qwen';
 export type FieldKey = 'protocol' | 'apiKey' | 'baseUrl' | 'model';
 export type Values = Record<FieldKey, string>;
 
@@ -147,6 +147,14 @@ export const CONNECTION_METHODS: ConnectionMethod[] = [
     kind: 'login',
     fields: [],
   },
+  {
+    id: 'codex',
+    label: 'Codex',
+    description: 'Codex instalado · usa a assinatura do ChatGPT (sem chave de API)',
+    providerId: 'codex',
+    kind: 'login',
+    fields: [],
+  },
 ];
 
 export function methodById(id: MethodId): ConnectionMethod {
@@ -186,13 +194,15 @@ export function methodStatusLabel(
   const how =
     method.id === 'claude-code'
       ? 'Claude Code'
-      : method.id === 'claude-login'
-        ? 'perfil'
-        : s?.maskedKey
-          ? `chave ${s.maskedKey}`
-          : s?.credentialSource === 'env'
-            ? 'ambiente'
-            : 'chave';
+      : method.id === 'codex'
+        ? 'Codex'
+        : method.id === 'claude-login'
+          ? 'perfil'
+          : s?.maskedKey
+            ? `chave ${s.maskedKey}`
+            : s?.credentialSource === 'env'
+              ? 'ambiente'
+              : 'chave';
   return status === 'active' ? `ativo (${how})` : `configurado (${how})`;
 }
 
