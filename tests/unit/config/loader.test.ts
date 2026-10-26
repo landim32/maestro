@@ -64,7 +64,7 @@ describe('loadSettings', () => {
       enabled: true,
       commandTimeoutMs: 60000,
       maxOutputChars: 20000,
-      maxToolIterations: 50,
+      maxToolIterations: 0,
       approvalMode: 'default',
     });
   });

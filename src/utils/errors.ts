@@ -18,6 +18,8 @@ export interface MaestroErrorInit {
   providerId?: ProviderId;
   hint?: string;
   cause?: unknown;
+  /** rate_limit: how long the provider asked to wait (Retry-After, usage-limit reset). */
+  retryAfterMs?: number;
 }
 
 /** User-facing error. `message` and `hint` must never contain secrets. */
@@ -26,6 +28,7 @@ export class MaestroError extends Error {
   readonly providerId?: ProviderId;
   readonly hint?: string;
   override readonly cause?: unknown;
+  readonly retryAfterMs?: number;
 
   constructor(init: MaestroErrorInit) {
     super(init.message);
@@ -34,7 +37,23 @@ export class MaestroError extends Error {
     this.providerId = init.providerId;
     this.hint = init.hint;
     this.cause = init.cause;
+    this.retryAfterMs = init.retryAfterMs;
   }
+}
+
+/** `Retry-After` (seconds or HTTP date) of an SDK error, in ms; undefined when absent. */
+export function retryAfterFrom(err: unknown, now = Date.now()): number | undefined {
+  const headers = (err as { headers?: unknown } | null)?.headers;
+  let raw: unknown;
+  if (headers && typeof (headers as { get?: unknown }).get === 'function')
+    raw = (headers as { get(k: string): unknown }).get('retry-after');
+  else if (headers && typeof headers === 'object')
+    raw = (headers as Record<string, unknown>)['retry-after'];
+  if (typeof raw !== 'string' || raw.trim() === '') return undefined;
+  const secs = Number(raw);
+  if (Number.isFinite(secs)) return Math.max(0, secs * 1000);
+  const at = Date.parse(raw);
+  return Number.isNaN(at) ? undefined : Math.max(0, at - now);
 }
 
 const NETWORK_CODES = new Set([

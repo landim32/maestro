@@ -81,3 +81,51 @@ export async function runNonInteractive(opts: NonInteractiveOptions): Promise<nu
     if (opts.handleSignals ?? true) process.off('SIGINT', onSigint);
   }
 }
+
+export interface AutopilotNonInteractiveOptions {
+  controller: SessionController;
+  file?: string;
+  resume?: boolean;
+  stdout?: { write(s: string): unknown };
+  stderr?: { write(s: string): unknown };
+  handleSignals?: boolean;
+}
+
+/**
+ * `maestro -p --autopilot <file> [--resume]` (specs/011 contracts/autopilot-cli.md § 2): progress
+ * and the turns' notices on stderr, the final report on stdout; exit 0 / 1 / 2.
+ */
+export async function runAutopilotNonInteractive(
+  opts: AutopilotNonInteractiveOptions,
+): Promise<number> {
+  const stdout = opts.stdout ?? process.stdout;
+  const stderr = opts.stderr ?? process.stderr;
+  const { controller } = opts;
+  let seen = controller.notices.length;
+  const flush = () => {
+    for (; seen < controller.notices.length; seen++) {
+      const n = controller.notices[seen]!;
+      stderr.write(`${n.level === 'info' ? '' : `[${n.level}] `}${n.text}\n`);
+    }
+  };
+  controller.on('change', flush);
+  const driver = controller.createAutopilot((line) => {
+    flush();
+    stderr.write(`${line}\n`);
+  });
+  const onSigint = () => driver.cancel();
+  if (opts.handleSignals ?? true) process.once('SIGINT', onSigint);
+  try {
+    const result = await driver.start(opts.file, { resume: opts.resume });
+    flush();
+    if (result.code === 2) {
+      stderr.write(`maestro: ${result.report}\n`);
+      return EXIT.USAGE;
+    }
+    stdout.write(`${result.report}\n`);
+    return result.code === 0 ? EXIT.OK : EXIT.PROVIDER_ERROR; // 1: a story stopped or the run was interrupted
+  } finally {
+    controller.off('change', flush);
+    process.off('SIGINT', onSigint);
+  }
+}

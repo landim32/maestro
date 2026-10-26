@@ -296,6 +296,10 @@ export function resultError(
       category: 'rate_limit',
       message: `limite de uso da assinatura atingido${resetText(st.rateLimitResetsAt)}`,
       hint: text,
+      // Wait until the subscription window resets (plus a small margin).
+      retryAfterMs: st.rateLimitResetsAt
+        ? Math.max(0, st.rateLimitResetsAt * 1000 - Date.now()) + 5_000
+        : undefined,
     });
   }
   return new MaestroError({ providerId: 'claude-code', category: 'provider', message: text });

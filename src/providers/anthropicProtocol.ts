@@ -2,7 +2,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { z } from 'zod';
 import type { Effort } from '../config/schema.js';
 import type { ToolDefinition } from '../tools/types.js';
-import { MaestroError, sanitizeCause } from '../utils/errors.js';
+import { MaestroError, retryAfterFrom, sanitizeCause } from '../utils/errors.js';
 import { redact } from '../utils/mask.js';
 import type { Message, ProviderEvent, ProviderId, ProviderRequest, StopReason } from './types.js';
 
@@ -124,6 +124,7 @@ export function createAnthropicErrorMapper(
         ...base,
         category: 'rate_limit',
         message: 'too many requests — wait a moment and retry',
+        retryAfterMs: retryAfterFrom(err),
       });
     }
     if (err instanceof Anthropic.APIConnectionError) {

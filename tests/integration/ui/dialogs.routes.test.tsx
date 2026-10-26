@@ -94,7 +94,7 @@ describe('/routes dialog (contracts/routes-dialog.md)', () => {
   it('sets a command route to another provider/model, then resets it to the default', async () => {
     const ui = mount();
     await open(ui);
-    await press(ui, KEYS.down, KEYS.down, KEYS.down); // speckit.plan
+    await press(ui, KEYS.down, KEYS.down, KEYS.down, KEYS.down); // speckit.plan (after chat, github, infra, autopilot.decide)
     await press(ui, KEYS.enter);
     await waitForFrame(ui, 'Escolher provedor e modelo');
     await press(ui, KEYS.enter);
@@ -119,7 +119,7 @@ describe('/routes dialog (contracts/routes-dialog.md)', () => {
     // reopen: the row is now global; "Voltar ao padrão" removes the key
     await open(ui);
     expect(ui.frameText()).toMatch(/speckit\.plan\s+qwen \/ qwen3-coder-flash\s+\[global\]/);
-    await press(ui, KEYS.down, KEYS.down, KEYS.down, KEYS.enter);
+    await press(ui, KEYS.down, KEYS.down, KEYS.down, KEYS.down, KEYS.enter); // speckit.plan
     await waitForFrame(ui, 'Voltar ao padrão');
     await press(ui, KEYS.down, KEYS.enter);
     await waitForFrame(ui, 'Rota speckit.plan voltou ao padrão.');
@@ -155,7 +155,7 @@ describe('/routes dialog (contracts/routes-dialog.md)', () => {
     expect(ui.frameText()).toMatch(
       /review\s+claude \/ claude-custom-9\s+\[global · atalho \/review\]/,
     );
-    await press(ui, KEYS.down, KEYS.down, KEYS.down, KEYS.enter); // review (after chat, github, infra)
+    await press(ui, KEYS.down, KEYS.down, KEYS.down, KEYS.down, KEYS.enter); // review (after chat, github, infra, autopilot.decide)
     await waitForFrame(ui, 'Remover rota');
     await press(ui, KEYS.down, KEYS.enter);
     await waitForFrame(ui, 'Rota review removida.');

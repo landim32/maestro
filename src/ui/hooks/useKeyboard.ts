@@ -10,6 +10,8 @@ import type { ViewportActions } from './useViewport.js';
 export interface KeyboardHandlers {
   state: SessionState;
   onCancel: () => void;
+  /** An autopilot run is active (specs/011): Esc interrupts it even between turns. */
+  autopilotActive?: boolean;
   onExit: () => void;
   onConfirm: (approved: boolean) => void;
   viewport?: ViewportActions;
@@ -44,6 +46,7 @@ export function isScrollKey(key: Key): boolean {
 export function useKeyboard({
   state,
   onCancel,
+  autopilotActive,
   onExit,
   onConfirm,
   viewport,
@@ -106,7 +109,10 @@ export function useKeyboard({
       return;
     }
 
-    if (state === 'generating' && (key.escape || ctrlC)) {
+    if (
+      (state === 'generating' || (autopilotActive && state === 'idle')) &&
+      (key.escape || ctrlC)
+    ) {
       onCancel();
       return;
     }

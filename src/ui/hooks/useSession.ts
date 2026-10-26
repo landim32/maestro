@@ -50,6 +50,8 @@ export function useSession(controller: SessionController) {
     currentRoute: controller.currentRoute,
     /** specs/009: activity of the turn in progress (undefined when idle) and the clock it uses. */
     activity: controller.activity,
+    /** specs/011: autopilot run in progress (status bar, prompt disabled, Esc interrupts). */
+    autopilot: controller.autopilotStatus,
     clock: controller.clock,
   };
 }

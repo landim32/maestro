@@ -37,6 +37,7 @@ describe('routeEntries (contracts/routes-config.md § 2)', () => {
       'chat',
       'github',
       'infra',
+      'autopilot.decide',
       'speckit.specify',
       'speckit.plan',
     ]);
@@ -49,7 +50,8 @@ describe('routeEntries (contracts/routes-config.md § 2)', () => {
       available: true,
       resolved: active,
     });
-    expect(entries[3]).toMatchObject({ kind: 'command', follows: 'chat', resolved: active });
+    expect(entries[3]).toMatchObject({ kind: 'purpose', builtin: true, follows: 'chat' }); // autopilot.decide (specs/011)
+    expect(entries[4]).toMatchObject({ kind: 'command', follows: 'chat', resolved: active });
     expect(entries[1]!.alias).toBe('ok');
     expect(entries.some((e) => e.name === 'speckit.init' || e.name === 'help')).toBe(false);
   });
@@ -100,6 +102,7 @@ describe('routeEntries (contracts/routes-config.md § 2)', () => {
       'chat',
       'github',
       'infra',
+      'autopilot.decide',
       'review',
       'speckit.old',
       'speckit.specify',

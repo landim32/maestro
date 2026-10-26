@@ -94,6 +94,12 @@ describe('renderBundledCommand / preflightFor', { timeout: 60_000 }, () => {
       json: true,
       pathsOnly: true,
     });
+    // clarify runs before plan: its --paths-only preflight must not demand plan.md
+    expect(preflightFor(by('speckit.clarify'))).toEqual({
+      step: 'check-prerequisites',
+      json: true,
+      pathsOnly: true,
+    });
     expect(preflightFor(by('speckit.tasks'))).toEqual({
       step: 'check-prerequisites',
       json: true,

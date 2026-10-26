@@ -37,10 +37,10 @@ function controller(provider: ModelProvider, settings: SettingsInput = {}) {
 }
 
 describe('tool iteration limit', () => {
-  it('defaults to 50 rounds (250 Claude Code calls)', () => {
-    expect(DEFAULTS.tools.maxToolIterations).toBe(50);
-    expect(MAX_TOOL_ITERATIONS).toBe(50);
-    expect(DEFAULTS.tools.maxToolIterations * CALLS_PER_ITERATION).toBe(250);
+  it('defaults to no limit (0), like Claude Code, qwen-code and gemini-cli', () => {
+    expect(DEFAULTS.tools.maxToolIterations).toBe(0);
+    expect(MAX_TOOL_ITERATIONS).toBe(0);
+    expect(CALLS_PER_ITERATION).toBe(5);
   });
 
   it('the built-in loop stops at tools.maxToolIterations from settings.json', async () => {
@@ -52,9 +52,9 @@ describe('tool iteration limit', () => {
     expect(ctl.notices.map((n) => n.text)).toContain('stopped after 3 tool iterations in one turn');
   });
 
-  it('without configuration a long agentic turn is not cut at 10 rounds', async () => {
+  it('without configuration a long agentic turn is never cut (120 rounds)', async () => {
     const provider = createFakeProvider((_req, i) =>
-      i < 15
+      i < 120
         ? readCall(i)
         : [
             { type: 'text_delta', text: 'pronto' },
@@ -64,7 +64,7 @@ describe('tool iteration limit', () => {
     const ctl = controller(provider);
     const r = await ctl.submit('implemente');
     expect(r?.stopReason).toBe('end_turn');
-    expect(r?.toolIterations).toBe(15);
+    expect(r?.toolIterations).toBe(120);
     expect(ctl.notices.some((n) => n.text.includes('tool iterations'))).toBe(false);
   });
 

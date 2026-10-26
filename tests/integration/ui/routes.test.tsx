@@ -116,6 +116,7 @@ describe('routes in the UI (specs/008 quickstart 2, 4, 5, 6)', () => {
       'chat',
       'github',
       'infra',
+      'autopilot.decide',
       'speckit.plan',
     ]);
     const revisar: SlashCommand = {

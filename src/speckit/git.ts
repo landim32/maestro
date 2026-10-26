@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 /** The only external program the Spec Kit steps use; always via execFile, never a shell. */
@@ -80,3 +81,56 @@ export const nullGit: GitPort = {
   isDirty: () => false,
   remoteUrl: () => undefined,
 };
+
+/**
+ * Commit-side operations used by the autopilot (specs/011 research R8). Kept apart from `GitPort`
+ * so the Spec Kit steps (and their test doubles) stay read/branch-only.
+ */
+export interface GitCommitPort {
+  headSha(root: string): string | undefined;
+  /** Stages every change (git add -A). */
+  addAll(root: string): void;
+  /** True when something is staged. */
+  hasStaged(root: string): boolean;
+  /** Commits the staged changes; returns the new HEAD sha. */
+  commit(root: string, message: string): string;
+  /** git push -u origin <branch>. */
+  push(root: string, branch: string): void;
+  /** True when `sha` is reachable from `branch`. */
+  isAncestor(root: string, sha: string, branch: string): boolean;
+  /** Stashes all changes (incl. untracked) with a message; false when the tree was clean. */
+  stash(root: string, message: string): boolean;
+}
+
+export const systemGitCommit: GitCommitPort = {
+  headSha: (root) => tryRun(root, ['rev-parse', 'HEAD']),
+  addAll: (root) => {
+    run(root, ['add', '-A']);
+  },
+  hasStaged: (root) => (tryRun(root, ['diff', '--cached', '--name-only']) ?? '') !== '',
+  commit: (root, message) => {
+    // The message goes through a file: no quoting issues, multi-line bodies kept as written.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'maestro-commit-'));
+    const file = path.join(dir, 'MSG');
+    try {
+      fs.writeFileSync(file, message, 'utf8');
+      run(root, ['commit', '-q', '-F', file]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+    return run(root, ['rev-parse', 'HEAD']);
+  },
+  push: (root, branch) => {
+    run(root, ['push', '-q', '-u', 'origin', branch]);
+  },
+  isAncestor: (root, sha, branch) =>
+    tryRun(root, ['merge-base', '--is-ancestor', sha, branch]) !== undefined,
+  stash: (root, message) => stashAll(root, message),
+};
+
+/** Stashes every change (tracked and untracked) with a message; returns false when there was none. */
+export function stashAll(root: string, message: string): boolean {
+  if ((tryRun(root, ['status', '--porcelain']) ?? '') === '') return false;
+  run(root, ['stash', 'push', '-q', '-u', '-m', message]);
+  return true;
+}

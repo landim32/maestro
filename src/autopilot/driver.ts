@@ -1,0 +1,625 @@
+/**
+ * Autopilot driver (specs/011 plan.md): the only module with effects. It runs the pure flow over
+ * the SessionController (one `submit` per turn), the disk, git, the verification commands and the
+ * decider, and persists the state after every action.
+ */
+import { createHash } from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { AutopilotSettings } from '../config/schema.js';
+import type { SessionController } from '../session/controller.js';
+import { findSpecifyRoot, readFeatureJson } from '../speckit/feature.js';
+import type { GitCommitPort, GitPort } from '../speckit/git.js';
+import { resolveInsideCwd } from '../tools/sandbox.js';
+import { runCommandTool } from '../tools/runCommand.js';
+import { formatElapsed } from '../session/activity.js';
+import { asAskUserHandler, createDecider, DeciderError } from './decider.js';
+import type { Decider, DecisionContext } from './decider.js';
+import {
+  onAnswer,
+  onCancelled,
+  onCommitted,
+  onDecisionFailed,
+  onPublished,
+  onTurn,
+  onVerify,
+  start,
+} from './flow.js';
+import type { FlowContext, NextAction, Step } from './flow.js';
+import { countTasks } from './gates.js';
+import type { ArtifactInfo, DiskView } from './gates.js';
+import { appendJsonl, decisionsPath, jsonlPath, rewriteProtected } from './log.js';
+import type { RemotePort } from './remote.js';
+import { formatReport } from './report.js';
+import { checkResume, resumeBranch } from './resume.js';
+import { isPidAlive, readRunState, writeRunState } from './state.js';
+import { parseStories } from './stories.js';
+import { emptyStory, STEPS } from './types.js';
+import type { Decision, Run, Story } from './types.js';
+
+export interface VerifyPort {
+  run(command: string, cwd: string, timeoutMs: number): Promise<{ code: number; output: string }>;
+}
+
+/** Runs a verification command with the same shell as `run_command`, outside the approval policy. */
+export const shellVerify: VerifyPort = {
+  async run(command, cwd, timeoutMs) {
+    const r = await runCommandTool.run(
+      { command },
+      {
+        cwd,
+        signal: new AbortController().signal,
+        settings: {
+          enabled: true,
+          commandTimeoutMs: timeoutMs,
+          maxOutputChars: 200_000,
+          maxToolIterations: 1,
+          approvalMode: 'default',
+        },
+      },
+    );
+    const m = /^exit code (\d+)/.exec(r.output);
+    const code = m ? Number(m[1]) : r.isError ? 1 : 0;
+    return { code, output: r.output.replace(/^exit code \S+\n?/, '') };
+  },
+};
+
+export interface AutopilotDeps {
+  controller: SessionController;
+  git: GitPort;
+  gitCommit: GitCommitPort;
+  remote: RemotePort;
+  verify: VerifyPort;
+  now?: () => number;
+  pid?: number;
+  /** Progress lines (stderr in -p; notices in the interactive session). */
+  progress?: (line: string) => void;
+}
+
+export interface AutopilotResult {
+  /** 0 all done · 1 a story stopped or the run was interrupted · 2 invalid input/configuration. */
+  code: 0 | 1 | 2;
+  report: string;
+  run?: Run;
+}
+
+const sha256 = (s: string) => createHash('sha256').update(s, 'utf8').digest('hex');
+const LAST_LINES = 200;
+const tail = (s: string, n = LAST_LINES) => s.split(/\r?\n/).slice(-n).join('\n');
+
+function artifact(file: string): ArtifactInfo {
+  try {
+    return { exists: true, hash: sha256(fs.readFileSync(file, 'utf8')) };
+  } catch {
+    return { exists: false };
+  }
+}
+
+/** Default verification: the package.json scripts test/lint/build that exist (research R10). */
+export function defaultVerifyCommands(root: string): string[] {
+  try {
+    const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const s = pkg.scripts ?? {};
+    const out: string[] = [];
+    if (s['test'] && !/no test specified/.test(s['test'])) out.push('npm test');
+    if (s['lint']) out.push('npm run lint');
+    if (s['build']) out.push('npm run build');
+    return out;
+  } catch {
+    return [];
+  }
+}
+
+function runId(now: number): string {
+  const d = new Date(now);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+
+/**
+ * The state file is local to the clone (resume needs it, commits must not carry it, and writing it
+ * after a commit must not dirty the tree): it is added to .git/info/exclude, never to .gitignore.
+ */
+export function excludeStateFile(root: string): void {
+  const gitDir = path.join(root, '.git');
+  try {
+    if (!fs.statSync(gitDir).isDirectory()) return; // worktree/submodule: left as is
+    const file = path.join(gitDir, 'info', 'exclude');
+    const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
+    const lines = current.split(/\r?\n/);
+    const missing = LOCAL_ONLY.filter((p) => !lines.includes(p));
+    if (missing.length === 0) return;
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const sep = current === '' || current.endsWith('\n') ? '' : '\n';
+    fs.appendFileSync(file, `${sep}${missing.join('\n')}\n`);
+  } catch {
+    /* best effort */
+  }
+}
+
+/** Local-only files of the autopilot: the run state and the structured log. */
+const LOCAL_ONLY = ['.specify/autopilot.json', '.maestro/autopilot/'];
+
+export class AutopilotDriver {
+  private readonly ctl: SessionController;
+  private readonly now: () => number;
+  private readonly pid: number;
+  private readonly progress: (line: string) => void;
+  private cancelled = false;
+  private abort = new AbortController();
+  private decisions: Decision[] = [];
+  /** decisions.md content from before this process (resume), by feature. */
+  private baseline = new Map<string, string>();
+  private askFailure?: string;
+  private lastVerifyOutput?: string;
+
+  constructor(private readonly deps: AutopilotDeps) {
+    this.ctl = deps.controller;
+    this.now = deps.now ?? Date.now;
+    this.pid = deps.pid ?? process.pid;
+    this.progress = deps.progress ?? ((l) => this.ctl.notice(l, 'info'));
+  }
+
+  /** Cancels the run (Esc): the turn in progress is cancelled and the step becomes interrupted. */
+  cancel(): void {
+    this.cancelled = true;
+    this.abort.abort();
+    this.ctl.cancel();
+  }
+
+  async start(file: string | undefined, opts: { resume?: boolean } = {}): Promise<AutopilotResult> {
+    const cwd = this.ctl.session.cwd;
+    const git = this.deps.git;
+    const root = findSpecifyRoot(cwd, git);
+    const refuse = (msg: string): AutopilotResult => ({ code: 2, report: msg });
+
+    if (!git.hasGit(root))
+      return refuse('O autopiloto precisa de um repositório git (commits por passo e retomada).');
+    excludeStateFile(root);
+    if (!fs.existsSync(path.join(root, '.specify')) || !this.ctl.specKit)
+      return refuse('Spec Kit não instalado neste projeto; rode /speckit.init.');
+
+    const saved = readRunState(root);
+    if (saved && 'error' in saved) return refuse(saved.error);
+    let inputRel = file;
+    if (!inputRel) {
+      if (!opts.resume || !saved)
+        return refuse('Uso: /autopilot <arquivo de histórias> [--resume]');
+      inputRel = saved.input;
+    }
+    let abs: string;
+    try {
+      abs = resolveInsideCwd(root, inputRel);
+    } catch (err) {
+      return refuse(err instanceof Error ? err.message : String(err));
+    }
+    if (!fs.existsSync(abs)) return refuse(`Arquivo de histórias não encontrado: ${inputRel}`);
+    const text = fs.readFileSync(abs, 'utf8');
+    const parsed = parseStories(text);
+    if ('error' in parsed)
+      return refuse(
+        `Nenhuma história em ${inputRel}: use um título "## " por história (${parsed.error}).`,
+      );
+    const stories = parsed;
+    const rel = path.relative(root, abs).split(path.sep).join('/');
+    const inputHash = sha256(text);
+
+    let run: Run;
+    const resuming =
+      saved !== undefined &&
+      saved.status !== 'done' &&
+      (opts.resume || (saved.input === rel && saved.status !== 'active'));
+    if (
+      saved &&
+      saved.status === 'active' &&
+      saved.pid !== this.pid &&
+      isPidAlive(saved.pid) &&
+      !opts.resume
+    )
+      return refuse(
+        `Já existe uma execução ativa (pid ${saved.pid}, iniciada em ${saved.startedAt}).`,
+      );
+
+    if (resuming) {
+      const checked = checkResume(
+        saved,
+        { hash: inputHash, stories },
+        {
+          isDirty: () => git.isDirty(root),
+          branchExists: (b) => git.branchExists(root, b),
+          isAncestor: (sha, b) => this.deps.gitCommit.isAncestor(root, sha, b),
+          isPidAlive,
+          ownPid: this.pid,
+        },
+      );
+      if (!checked.ok) return refuse(checked.error);
+      run = checked.run;
+      const branch = resumeBranch(run);
+      if (git.currentBranch(root) !== branch) git.checkoutExisting(root, branch);
+      for (const st of run.stories) {
+        if (!st.feature) continue;
+        try {
+          this.baseline.set(st.feature, fs.readFileSync(decisionsPath(root, st.feature), 'utf8'));
+        } catch {
+          /* no decisions yet */
+        }
+      }
+    } else {
+      if (opts.resume) return refuse('Nenhuma execução do autopiloto para retomar.');
+      if (git.isDirty(root))
+        return refuse(
+          'Há alterações não commitadas; faça commit ou stash antes de iniciar o autopiloto.',
+        );
+      run = {
+        version: 1,
+        id: runId(this.now()),
+        input: rel,
+        inputHash,
+        baseBranch: git.currentBranch(root) ?? 'main',
+        status: 'active',
+        pid: this.pid,
+        startedAt: new Date(this.now()).toISOString(),
+        stories: stories.map(emptyStory),
+      };
+    }
+
+    const settings = this.ctl.settings.autopilot;
+    const verifyCommands = settings.verify.command ?? defaultVerifyCommands(root);
+    const specKit = this.ctl.specKit!;
+    const prevCreateBranch = specKit.settings.createBranch;
+    (specKit.settings as { createBranch: boolean }).createBranch = true;
+
+    const ctx = (): FlowContext => ({ stories, settings, now: this.now() });
+    let step = start(run, ctx());
+    const decider = this.makeDecider(() => step, stories, root);
+    const restore = this.ctl.runOverrides({
+      approvalMode: 'auto',
+      confirm: async () => false, // only destructive commands ask in "auto"; they are refused (FR-005)
+      ask: asAskUserHandler(
+        decider,
+        () => this.decisionContext(step, stories, root),
+        (d) => this.record(root, step.state.run.id, d),
+        (reason) => (this.askFailure = reason),
+      ),
+    });
+    this.ctl.autopilotCancel = () => this.cancel();
+    this.ctl.logger.log('autopilot.start', {
+      stories: stories.length,
+      resume: resuming,
+      verify: verifyCommands.length,
+    });
+    if (verifyCommands.length === 0)
+      this.progress(
+        'autopiloto: nenhum comando de verificação configurado; o passo verify não verifica nada.',
+      );
+
+    try {
+      for (;;) {
+        writeRunState(root, step.state.run);
+        if (this.cancelled && step.next.type !== 'finish') step = onCancelled(step.state);
+        if (step.next.type === 'finish') break;
+        this.ctl.setAutopilotStatus({
+          story: step.state.story + 1,
+          total: step.state.run.stories.length,
+          step: step.state.step,
+        });
+        step = await this.perform(step, step.next, {
+          root,
+          stories,
+          settings,
+          verifyCommands,
+          decider,
+          ctx,
+        });
+      }
+    } finally {
+      restore();
+      (specKit.settings as { createBranch: boolean }).createBranch = prevCreateBranch;
+      this.ctl.autopilotCancel = undefined;
+      this.ctl.setAutopilotStatus(undefined);
+      writeRunState(root, step.state.run);
+    }
+
+    const final = step.state.run;
+    // An interrupted step leaves partial work: keep it in a named stash (no partial commit, no
+    // loss) so the tree is clean and the step restarts from scratch on resume.
+    let stashed: string | undefined;
+    if (final.status === 'interrupted') {
+      const st = final.stories[step.state.story];
+      const msg = `maestro autopilot ${final.id}: ${st?.feature ?? `história ${step.state.story + 1}`} ${step.state.step} interrompido`;
+      try {
+        if (this.deps.gitCommit.stash(root, msg)) stashed = msg;
+      } catch {
+        stashed = undefined;
+      }
+    }
+    this.ctl.logger.log('autopilot.end', {
+      status: final.status,
+      stories: final.stories.length,
+      done: final.stories.filter((s) => s.status === 'done').length,
+    });
+    const counts: Record<number, number> = {};
+    for (const d of this.decisions) counts[d.story] = (counts[d.story] ?? 0) + 1;
+    const decisionFiles = final.stories
+      .filter((s) => s.feature && fs.existsSync(decisionsPath(root, s.feature)))
+      .map((s) => `specs/${s.feature}/decisions.md`);
+    const report = formatReport(final, {
+      decisions: counts,
+      decisionFiles,
+      jsonl: path.relative(root, jsonlPath(root, final.id)).split(path.sep).join('/'),
+      lastOutput: final.stopped?.step === 'verify' ? this.lastVerifyOutput : undefined,
+      stashed,
+    });
+    return { code: final.status === 'done' ? 0 : 1, report, run: final };
+  }
+
+  // ------------------------------------------------------------------ actions
+
+  private async perform(
+    step: Step,
+    next: NextAction,
+    env: {
+      root: string;
+      stories: Story[];
+      settings: AutopilotSettings;
+      verifyCommands: string[];
+      decider: Decider;
+      ctx: () => FlowContext;
+    },
+  ): Promise<Step> {
+    const { root } = env;
+    const st = step.state;
+    const label = `história ${st.story + 1}/${st.run.stories.length}`;
+    switch (next.type) {
+      case 'turn': {
+        if (next.clear) {
+          this.ctl.clearConversation({ quiet: true });
+          this.progress(`autopiloto: ${label} "${st.run.stories[st.story]!.title}" · ${st.step}…`);
+        } else {
+          this.progress(
+            `autopiloto: ${label} · ${st.step} · ${next.text === 'continue' ? `continue (${this.taskProgress(root)})` : 'nova rodada'}`,
+          );
+        }
+        this.ctl.logger.log('autopilot.step', {
+          story: st.story + 1,
+          step: st.step,
+          clear: next.clear,
+        });
+        const before = this.disk(root);
+        const t0 = this.now();
+        this.askFailure = undefined;
+        const result = await this.ctl.submit(next.text, { record: false });
+        const ms = this.now() - t0;
+        const after = this.disk(root);
+        if (this.askFailure) return onDecisionFailed(st, this.askFailure);
+        const blocked =
+          result === undefined
+            ? this.ctl.lastCommandBlocked
+              ? (this.ctl.notices.filter((n) => n.level === 'warn').at(-1)?.text ??
+                'comando bloqueado')
+              : 'o turno não foi executado'
+            : undefined;
+        const out = onTurn(st, env.ctx(), {
+          snapshot: {
+            step: st.step === 'verify' ? 'implement' : st.step,
+            before,
+            after,
+            branch: this.deps.git.currentBranch(root),
+            hasGit: true,
+            text: result?.text ?? '',
+            stopReason: result?.stopReason ?? 'end_turn',
+            errorCategory: result?.error?.category,
+            blocked,
+          },
+          usage: result?.usage ?? { inputTokens: 0, outputTokens: 0 },
+          ms,
+        });
+        this.gateEvent(root, out);
+        return out;
+      }
+      case 'decide': {
+        try {
+          const d = await env.decider.text(
+            this.decisionContext(step, env.stories, root),
+            next.question,
+          );
+          this.record(root, st.run.id, d);
+          return onAnswer(st, String(d.choice));
+        } catch (err) {
+          return onDecisionFailed(st, err instanceof DeciderError ? err.message : String(err));
+        }
+      }
+      case 'verify': {
+        if (env.verifyCommands.length === 0)
+          return onVerify(st, env.ctx(), { ok: true, command: '', output: '', skipped: true });
+        for (const command of env.verifyCommands) {
+          this.progress(`autopiloto: ${label} · verify · ${command}`);
+          const r = await this.deps.verify.run(command, root, env.settings.verify.timeoutMs);
+          if (r.code !== 0) {
+            this.lastVerifyOutput = tail(r.output, 10);
+            appendJsonl(root, st.run.id, {
+              event: 'verify',
+              story: st.story + 1,
+              command,
+              code: r.code,
+            });
+            return onVerify(st, env.ctx(), { ok: false, command, output: tail(r.output) });
+          }
+        }
+        appendJsonl(root, st.run.id, { event: 'verify', story: st.story + 1, ok: true });
+        return onVerify(st, env.ctx(), {
+          ok: true,
+          command: env.verifyCommands.join(' && '),
+          output: '',
+        });
+      }
+      case 'commit': {
+        const story = st.run.stories[st.story]!;
+        // Decisions made before the feature existed (specify) belong to it now.
+        for (const d of this.decisions)
+          if (d.story === st.story + 1 && !d.feature) d.feature = story.feature;
+        const s0 = st.run.stories[st.story]!.steps[st.step];
+        const spent = `${formatElapsed(s0.ms)}`;
+        rewriteProtected(
+          root,
+          { ...st.run },
+          st.story + 1,
+          this.decisions,
+          story.feature ? this.baseline.get(story.feature) : undefined,
+        );
+        this.deps.gitCommit.addAll(root);
+        let sha: string | undefined;
+        if (this.deps.gitCommit.hasStaged(root))
+          sha = this.deps.gitCommit.commit(root, next.message);
+        else sha = this.deps.gitCommit.headSha(root);
+        appendJsonl(root, st.run.id, { event: 'commit', story: st.story + 1, step: st.step, sha });
+        this.progress(`autopiloto: ${label} · ${st.step} ok (${spent})`);
+        const out = onCommitted(st, env.ctx(), sha);
+        writeRunState(root, out.state.run);
+        return out;
+      }
+      case 'publish': {
+        const story = st.run.stories[st.story]!;
+        if (!env.settings.push || !story.branch) return onPublished(st, env.ctx());
+        const base =
+          st.story > 0
+            ? (st.run.stories[st.story - 1]!.branch ?? env.settings.prBase ?? st.run.baseBranch)
+            : (env.settings.prBase ?? st.run.baseBranch);
+        try {
+          this.deps.gitCommit.push(root, story.branch);
+          const pr = this.deps.remote.createPr(root, {
+            base,
+            head: story.branch,
+            title: `${env.settings.commitPrefix} ${story.title}`,
+            body: `Gerado pelo autopiloto do Maestro (execução ${st.run.id}).\n\nDecisões: specs/${story.feature}/decisions.md\n`,
+          });
+          if (env.settings.merge) this.deps.remote.merge(root, pr.number);
+          appendJsonl(root, st.run.id, {
+            event: 'pr',
+            story: st.story + 1,
+            url: pr.url,
+            merged: env.settings.merge,
+          });
+          this.progress(`autopiloto: ${label} · PR ${pr.url}`);
+          return onPublished(st, env.ctx(), pr);
+        } catch (err) {
+          this.progress(
+            `autopiloto: ${label} · push/PR falhou: ${err instanceof Error ? err.message : String(err)}`,
+          );
+          return onPublished(st, env.ctx());
+        }
+      }
+      case 'finish':
+        return step;
+    }
+  }
+
+  // ------------------------------------------------------------------ helpers
+
+  private makeDecider(current: () => Step, _stories: Story[], _root: string): Decider {
+    return createDecider({
+      target: () => this.ctl.resolveRouteTarget('autopilot.decide'),
+      meta: () => {
+        const s = current().state;
+        return {
+          story: s.story + 1,
+          feature: s.run.stories[s.story]?.feature,
+          at: new Date(this.now()).toISOString(),
+        };
+      },
+      signal: () => this.abort.signal,
+    });
+  }
+
+  private decisionContext(step: Step, stories: Story[], root: string): DecisionContext {
+    const s = step.state;
+    const story = stories[s.story]!;
+    const feature = readFeatureJson(root);
+    let spec: string | undefined;
+    if (feature) {
+      try {
+        spec = fs.readFileSync(path.join(root, feature, 'spec.md'), 'utf8');
+      } catch {
+        spec = undefined;
+      }
+    }
+    return { storyTitle: story.title, storyBody: story.body, step: s.step, spec };
+  }
+
+  private record(root: string, runId: string, d: Decision): void {
+    this.decisions.push(d);
+    appendJsonl(root, runId, { event: 'decision', ...d });
+    this.ctl.logger.log('autopilot.decision', {
+      story: d.story,
+      step: d.step,
+      kind: d.kind,
+      followedRecommendation: d.followedRecommendation,
+    });
+  }
+
+  private gateEvent(root: string, out: Step): void {
+    const s = out.state;
+    const gate = s.run.stories[s.story]?.steps[s.step].gate;
+    appendJsonl(root, s.run.id, {
+      event: 'gate',
+      story: s.story + 1,
+      step: s.step,
+      next: out.next.type,
+      ok: gate?.ok,
+      reason: gate?.reason,
+    });
+    this.ctl.logger.log('autopilot.gate', {
+      story: s.story + 1,
+      step: s.step,
+      next: out.next.type,
+    });
+  }
+
+  private disk(root: string): DiskView {
+    const specs = path.join(root, 'specs');
+    let featureDirs: string[] = [];
+    try {
+      featureDirs = fs
+        .readdirSync(specs, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name);
+    } catch {
+      featureDirs = [];
+    }
+    const rel = readFeatureJson(root);
+    const feature = rel ? path.basename(rel) : undefined;
+    const dir = rel ? path.join(root, rel) : undefined;
+    const tasksFile = dir ? path.join(dir, 'tasks.md') : undefined;
+    let open = 0;
+    let done = 0;
+    if (tasksFile) {
+      try {
+        const c = countTasks(fs.readFileSync(tasksFile, 'utf8'));
+        open = c.open;
+        done = c.done;
+      } catch {
+        /* no tasks yet */
+      }
+    }
+    const none: ArtifactInfo = { exists: false };
+    return {
+      featureDirs,
+      feature,
+      spec: dir ? artifact(path.join(dir, 'spec.md')) : none,
+      plan: dir ? artifact(path.join(dir, 'plan.md')) : none,
+      tasks: tasksFile ? artifact(tasksFile) : none,
+      openTasks: open,
+      doneTasks: done,
+    };
+  }
+
+  private taskProgress(root: string): string {
+    const d = this.disk(root);
+    return `${d.doneTasks}/${d.openTasks + d.doneTasks} tarefas`;
+  }
+}
+
+/** Steps in order, for help texts. */
+export const STEP_LIST = STEPS.join(' → ');

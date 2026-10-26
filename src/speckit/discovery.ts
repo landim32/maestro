@@ -215,6 +215,10 @@ export function preflightFor(file: SpecKitCommandFile): StepRequest | undefined 
       case 'setup-tasks':
         return { step: 'check-prerequisites', json: true, requireSpec: true };
       case 'check-prerequisites':
+        // `--paths-only` (clarify) validates nothing beyond the feature: keep it, or the default
+        // check would demand plan.md before /speckit.plan ever ran (found by specs/011).
+        if (fromScripts.pathsOnly)
+          return { step: 'check-prerequisites', json: true, pathsOnly: true };
         return { ...fromScripts, pathsOnly: undefined, template: undefined };
     }
   }

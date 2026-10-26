@@ -280,13 +280,13 @@ describe('provider-driven turn', () => {
     const { MaestroError } = await import('../../../src/utils/errors.js');
     const p = drivenProvider([{ text: 'parcial' }], {
       type: 'error',
-      error: new MaestroError({ category: 'rate_limit', message: 'limite' }),
+      error: new MaestroError({ category: 'provider', message: 'falhou' }),
     });
     const errors: string[] = [];
     s.pushUser('x');
     const r = await runTurn(s, p, opts(), { onError: (e) => errors.push(e.category) });
     expect(r.stopReason).toBe('error');
-    expect(errors).toEqual(['rate_limit']);
+    expect(errors).toEqual(['provider']);
     expect(s.history.at(-1)?.content).toEqual([{ type: 'text', text: 'parcial' }]);
   });
 
