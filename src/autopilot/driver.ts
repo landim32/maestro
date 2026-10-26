@@ -286,7 +286,7 @@ export class AutopilotDriver {
           );
         }
       }
-      // The interrupted step's partial work comes back from its stash: the step continues it.
+      // Runs interrupted by older versions stashed the step's partial work: bring it back to disk.
       const si = run.stories.findIndex((s) => s.status !== 'done');
       const story = run.stories[si];
       const halted = story && STEPS.find((x) => story.steps[x].status === 'interrupted');
@@ -388,18 +388,9 @@ export class AutopilotDriver {
     }
 
     const final = step.state.run;
-    // An interrupted step leaves partial work: keep it in a named stash (no partial commit, no
-    // loss) so the tree is clean and the step restarts from scratch on resume.
-    let stashed: string | undefined;
-    if (final.status === 'interrupted') {
-      const st = final.stories[step.state.story];
-      const msg = interruptedStashName(final.id, st ?? {}, step.state.story, step.state.step);
-      try {
-        if (this.deps.gitCommit.stash(root, msg)) stashed = msg;
-      } catch {
-        stashed = undefined;
-      }
-    }
+    // An interrupted step's partial work stays on disk, uncommitted: the resume continues from it
+    // and the step's commit takes it.
+    const partial = final.status === 'interrupted' && git.isDirty(root);
     this.ctl.logger.log('autopilot.end', {
       status: final.status,
       stories: final.stories.length,
@@ -426,7 +417,7 @@ export class AutopilotDriver {
       openTasks,
       jsonl: path.relative(root, jsonlPath(root, final.id)).split(path.sep).join('/'),
       lastOutput: final.stopped?.step === 'verify' ? this.lastVerifyOutput : undefined,
-      stashed,
+      partial,
     });
     return { code: final.status === 'done' ? 0 : 1, report, run: final };
   }
@@ -494,6 +485,10 @@ export class AutopilotDriver {
             stopReason: result?.stopReason ?? 'end_turn',
             errorCategory: result?.error?.category,
             blocked,
+            planUncommitted:
+              st.step === 'plan' && after.feature
+                ? this.deps.gitCommit.uncommitted(root, `specs/${after.feature}/plan.md`)
+                : undefined,
           },
           usage: result?.usage ?? { inputTokens: 0, outputTokens: 0 },
           ms,

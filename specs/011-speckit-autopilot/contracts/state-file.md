@@ -5,7 +5,7 @@
 - O arquivo é gravado depois de cada transição do reducer, de forma atômica (`.tmp` e `rename`).
 - Só o autopiloto escreve nele. Antes de cada commit, o driver o regrava a partir da memória, o que descarta edições do modelo.
 - O arquivo é **local**: o autopiloto o acrescenta, junto com `.maestro/autopilot/`, ao `.git/info/exclude`, nunca ao `.gitignore`. Assim ele não entra nos commits e gravá-lo depois de um commit não suja a árvore. A retomada vale no mesmo clone (decisão tomada na implementação).
-- Um passo interrompido guarda o trabalho parcial num `git stash` nomeado `maestro autopilot <id>: <feature> <passo> interrompido`. A árvore fica limpa e o passo recomeça do zero na retomada.
+- Um passo interrompido deixa o trabalho parcial no disco, sem commit; a retomada continua o passo a partir dele e o commit do passo o inclui (revisto depois da implementação: antes ia para um `git stash` nomeado `maestro autopilot <id>: <feature> <passo> interrompido`, que a retomada ainda devolve ao disco).
 
 ## 2. Esquema (zod, `version: 1`)
 

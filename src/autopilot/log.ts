@@ -58,7 +58,7 @@ export function renderDecisions(
   return `${out.join('\n')}\n`;
 }
 
-/** Name of the stash holding the partial work of an interrupted step (written and looked up). */
+/** Name of the stash where older versions kept the partial work of an interrupted step. */
 export function interruptedStashName(
   runId: string,
   story: { feature?: string },

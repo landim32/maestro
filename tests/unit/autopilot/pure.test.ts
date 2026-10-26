@@ -107,6 +107,15 @@ describe('gates (contracts/gates.md § 2)', () => {
     expect(evaluateGate({ ...existing, claimed: '005-y' }, resumed).kind).toBe('stop');
   });
 
+  it('plan: a resumed step accepts the uncommitted plan.md its interrupted turn wrote', () => {
+    const same = { exists: true, hash: 'h' };
+    const unchanged = snap({ before: view({ plan: same }), after: view({ plan: same }) });
+    const resumed = { ...fresh, resumed: true };
+    expect(evaluateGate(unchanged, resumed).kind).toBe('stop');
+    expect(evaluateGate({ ...unchanged, planUncommitted: true }, fresh).kind).toBe('stop');
+    expect(evaluateGate({ ...unchanged, planUncommitted: true }, resumed).kind).toBe('advance');
+  });
+
   it('interruptions, errors and preflight come first', () => {
     expect(evaluateGate(snap({ stopReason: 'cancelled' }), fresh).kind).toBe('interrupted');
     expect(

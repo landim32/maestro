@@ -48,8 +48,8 @@ export function formatReport(
     openTasks?: Record<number, string[]>;
     jsonl: string;
     lastOutput?: string;
-    /** Message of the git stash holding the partial work of an interrupted step. */
-    stashed?: string;
+    /** An interrupted step left partial work on disk (uncommitted). */
+    partial?: boolean;
   },
 ): string {
   const lines = [`Autopiloto ${run.id} · ${run.input} · base ${run.baseBranch}`];
@@ -81,9 +81,9 @@ export function formatReport(
   });
   lines.push('---');
   lines.push(`Registro: ${o.jsonl}`);
-  if (o.stashed)
+  if (o.partial)
     lines.push(
-      `Alterações parciais do passo interrompido: git stash "${o.stashed}" (a retomada o devolve ao disco e continua o passo)`,
+      'Alterações parciais do passo interrompido: ficaram no disco, sem commit (a retomada continua o passo a partir delas)',
     );
   if (run.status === 'interrupted' || run.status === 'stopped')
     lines.push(`Retomar: /autopilot --resume   (ou maestro -p --autopilot ${run.input} --resume)`);
