@@ -48,17 +48,27 @@ export interface GateSnapshot {
   blocked?: string;
 }
 
+const TASK_LINE = /^\s*[-*]\s+\[([ xX])\]\s+T\d+/;
+
 /** `- [ ] T001` / `- [X] T001` in tasks.md. */
 export function countTasks(markdown: string): { open: number; done: number } {
   let open = 0;
   let done = 0;
   for (const line of markdown.split(/\r?\n/)) {
-    const m = /^\s*[-*]\s+\[([ xX])\]\s+T\d+/.exec(line);
+    const m = TASK_LINE.exec(line);
     if (!m) continue;
     if (m[1] === ' ') open++;
     else done++;
   }
   return { open, done };
+}
+
+/** The open task lines of tasks.md, trimmed, in file order (final report). */
+export function openTaskLines(markdown: string): string[] {
+  return markdown
+    .split(/\r?\n/)
+    .filter((line) => TASK_LINE.exec(line)?.[1] === ' ')
+    .map((line) => line.trim());
 }
 
 /**

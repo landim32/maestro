@@ -59,6 +59,10 @@ export const DEFAULTS = {
     maxToolIterations: 0,
     approvalMode: 'default' as ApprovalMode,
   },
+  /** Skills (specs/013): SKILL.md listed in the system prompt, loaded with load_skill. */
+  skills: {
+    enabled: true,
+  },
   /** Autopilot (specs/011): per-story limits and verification. */
   autopilot: {
     verifyMaxAttempts: 3,

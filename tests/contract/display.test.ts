@@ -40,6 +40,7 @@ function history(withDisplay: boolean): Message[] {
                   declined: true,
                   speckitStep: 'setup-plan',
                   summary: 'SEGREDO-DE-EXIBICAO',
+                  skill: { name: 'SEGREDO-DE-EXIBICAO', source: 'user' as const, ok: true },
                 },
               }
             : {}),

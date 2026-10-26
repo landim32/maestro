@@ -23,22 +23,41 @@ function stepLine(story: StoryRun): string {
   }).join('  ');
 }
 
+/** Open tasks listed per story; the rest is summarised so the report stays readable. */
+export const REPORT_MAX_OPEN_TASKS = 10;
+
+function openTasksBlock(tasks: string[] | undefined): string[] {
+  if (!tasks) return [];
+  if (tasks.length === 0) return ['  - Nenhuma tarefa em aberto'];
+  const shown = tasks.slice(0, REPORT_MAX_OPEN_TASKS).map((t) => `  ${t}`);
+  const rest = tasks.length - shown.length;
+  return [
+    '  - Tarefas em aberto:',
+    ...shown,
+    ...(rest > 0 ? [`  - … mais ${rest} (veja o tasks.md)`] : []),
+  ];
+}
+
 export function formatReport(
   run: Run,
   o: {
     decisions: Record<number, number>;
-    decisionFiles: string[];
+    /** Per story number: `specs/<feature>/decisions.md`, when the file exists. */
+    decisionFiles: Record<number, string>;
+    /** Per story number: open task lines of its tasks.md (absent = no tasks.md yet). */
+    openTasks?: Record<number, string[]>;
     jsonl: string;
     lastOutput?: string;
     /** Message of the git stash holding the partial work of an interrupted step. */
     stashed?: string;
   },
 ): string {
-  const total = run.stories.length;
   const lines = [`Autopiloto ${run.id} · ${run.input} · base ${run.baseBranch}`];
   run.stories.forEach((st, i) => {
     const n = i + 1;
-    const head = `${n}/${total} ${st.title}${st.feature ? ` · ${st.feature}` : ''}`;
+    // Stories not started yet stay out of the report; /autopilot --status lists them.
+    if (st.status === 'pending' && run.stopped?.story !== n) return;
+    const head = `${n}. ${st.feature ?? st.title}`;
     const usage = `${st.usage.turns} turnos · ${formatElapsed(st.usage.ms)} · ${o.decisions[n] ?? 0} decisões`;
     if (st.status === 'done') {
       lines.push(`✓ ${head} · ${usage}`);
@@ -55,10 +74,12 @@ export function formatReport(
       const step = STEPS.find((x) => st.steps[x].status === 'interrupted');
       lines.push(`‖ ${head} · interrompida${step ? ` em ${step}` : ''}`);
     } else {
-      lines.push(`· ${head} · não iniciada`);
+      lines.push(`· ${head} · ${st.status === 'running' ? 'em andamento' : 'não iniciada'}`);
     }
+    lines.push(...openTasksBlock(o.openTasks?.[n]));
+    if (o.decisionFiles[n]) lines.push(`Decisões: ${o.decisionFiles[n]}`);
   });
-  if (o.decisionFiles.length) lines.push(`Decisões: ${o.decisionFiles.join(', ')}`);
+  lines.push('---');
   lines.push(`Registro: ${o.jsonl}`);
   if (o.stashed)
     lines.push(

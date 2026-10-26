@@ -8,6 +8,7 @@ import type { SessionController } from './controller.js';
 import { statusText } from '../autopilot/report.js';
 import { readRunState } from '../autopilot/state.js';
 import { findSpecifyRoot } from '../speckit/feature.js';
+import { skillsReport } from '../skills/catalog.js';
 
 function autopilotStatusText(cwd: string): string {
   return statusText(readRunState(findSpecifyRoot(cwd)));
@@ -317,6 +318,15 @@ const autopilot: SlashCommand = {
   },
 };
 
+const skills: SlashCommand = {
+  name: 'skills',
+  description: 'List the skills found (.claude/skills, .agents/skills, ~/.claude/skills).',
+  run(ctl) {
+    const s = ctl.skills;
+    ctl.notice(skillsReport(s.catalog, s.state, { cwd: ctl.session.cwd, home: s.home }), 'info');
+  },
+};
+
 export const DEFAULT_COMMANDS: SlashCommand[] = [
   help,
   auth,
@@ -326,6 +336,7 @@ export const DEFAULT_COMMANDS: SlashCommand[] = [
   approvalMode,
   mouse,
   autopilot,
+  skills,
   clear,
   exit,
 ];

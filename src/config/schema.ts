@@ -113,6 +113,12 @@ export const toolsSettingsSchema = z.strictObject({
   approvalMode: approvalModeSchema.default(DEFAULTS.tools.approvalMode),
 });
 
+/** Skills (specs/013 contracts/settings.md): false = no discovery, no prompt section, no load_skill. */
+export const skillsSettingsSchema = z.strictObject({
+  _comment: comment,
+  enabled: z.boolean().default(DEFAULTS.skills.enabled),
+});
+
 export const uiSettingsSchema = z.strictObject({
   _comment: comment,
   color: z.boolean().optional(),
@@ -257,6 +263,7 @@ export const settingsSchema = z.strictObject({
     })
     .prefault({}),
   tools: toolsSettingsSchema.prefault({}),
+  skills: skillsSettingsSchema.prefault({}),
   ui: uiSettingsSchema.prefault({}),
   speckit: speckitSettingsSchema.prefault({}),
   autopilot: autopilotSettingsSchema.prefault({}),
@@ -270,6 +277,7 @@ export type QwenProviderSettings = z.infer<typeof qwenProviderSchema>;
 export type ClaudeCodeProviderSettings = z.infer<typeof claudeCodeProviderSchema>;
 export type CodexProviderSettings = z.infer<typeof codexProviderSchema>;
 export type ToolsSettings = z.infer<typeof toolsSettingsSchema>;
+export type SkillsSettings = z.infer<typeof skillsSettingsSchema>;
 export type UiSettings = z.infer<typeof uiSettingsSchema>;
 export type SpecKitSettings = z.infer<typeof speckitSettingsSchema>;
 export type AutopilotSettings = z.infer<typeof autopilotSettingsSchema>;

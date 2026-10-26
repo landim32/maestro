@@ -26,8 +26,9 @@ import {
   start,
 } from './flow.js';
 import type { FlowContext, NextAction, Step } from './flow.js';
-import { countTasks } from './gates.js';
+import { countTasks, openTaskLines } from './gates.js';
 import type { ArtifactInfo, DiskView } from './gates.js';
+import type { ToolResult } from '../tools/types.js';
 import { appendJsonl, decisionsPath, jsonlPath, rewriteProtected } from './log.js';
 import type { RemotePort } from './remote.js';
 import { formatReport } from './report.js';
@@ -305,6 +306,7 @@ export class AutopilotDriver {
         (d) => this.record(root, step.state.run.id, d),
         (reason) => (this.askFailure = reason),
       ),
+      onToolResult: (_name, result) => this.skillEvent(root, step, result),
     });
     this.ctl.autopilotCancel = () => this.cancel();
     this.ctl.logger.log('autopilot.start', {
@@ -364,12 +366,23 @@ export class AutopilotDriver {
     });
     const counts: Record<number, number> = {};
     for (const d of this.decisions) counts[d.story] = (counts[d.story] ?? 0) + 1;
-    const decisionFiles = final.stories
-      .filter((s) => s.feature && fs.existsSync(decisionsPath(root, s.feature)))
-      .map((s) => `specs/${s.feature}/decisions.md`);
+    const decisionFiles: Record<number, string> = {};
+    const openTasks: Record<number, string[]> = {};
+    final.stories.forEach((s, i) => {
+      if (!s.feature) return;
+      if (fs.existsSync(decisionsPath(root, s.feature)))
+        decisionFiles[i + 1] = `specs/${s.feature}/decisions.md`;
+      try {
+        const tasks = fs.readFileSync(path.join(root, 'specs', s.feature, 'tasks.md'), 'utf8');
+        openTasks[i + 1] = openTaskLines(tasks);
+      } catch {
+        /* no tasks.md yet */
+      }
+    });
     const report = formatReport(final, {
       decisions: counts,
       decisionFiles,
+      openTasks,
       jsonl: path.relative(root, jsonlPath(root, final.id)).split(path.sep).join('/'),
       lastOutput: final.stopped?.step === 'verify' ? this.lastVerifyOutput : undefined,
       stashed,
@@ -580,6 +593,25 @@ export class AutopilotDriver {
       kind: d.kind,
       followedRecommendation: d.followedRecommendation,
     });
+  }
+
+  /** specs/013 contracts/autopilot-skill-event.md: one line per load_skill call, no content. */
+  private skillEvent(root: string, current: Step, result: ToolResult): void {
+    const d = result.display?.skill;
+    if (!d) return;
+    const s = current.state;
+    const feature = s.run.stories[s.story]?.feature;
+    appendJsonl(root, s.run.id, {
+      event: 'skill.load',
+      story: s.story + 1,
+      ...(feature ? { feature } : {}),
+      step: s.step,
+      skill: d.name,
+      ...(d.source ? { source: d.source } : {}),
+      ...(d.file ? { file: d.file } : {}),
+      ok: d.ok,
+    });
+    this.ctl.logger.log('autopilot.skill', { story: s.story + 1, step: s.step, ok: d.ok });
   }
 
   private gateEvent(root: string, out: Step): void {

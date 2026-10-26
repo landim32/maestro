@@ -12,6 +12,7 @@ import type {
   AskUserRequest,
   PendingToolAction,
   ToolDefinition,
+  ToolResult,
 } from '../tools/types.js';
 import { approvalModeInfo, nextApprovalMode } from '../tools/approval.js';
 import type { ApprovalMode } from '../tools/approval.js';
@@ -47,6 +48,8 @@ import { SessionBusyError } from './session.js';
 import { runTurn } from './turn.js';
 import type { TurnResult } from './turn.js';
 import { ChipRegistry } from '../ui/chips.js';
+import { EMPTY_CATALOG } from '../skills/catalog.js';
+import type { SkillCatalog, SkillsState } from '../skills/catalog.js';
 import { toolLabel } from '../ui/toolDisplay.js';
 import { activityReducer, formatSummary, initialActivity, summarize } from './activity.js';
 import type { Activity, ActivityEvent } from './activity.js';
@@ -125,9 +128,18 @@ export interface ControllerOptions {
   specKit?: SpecKitService;
   /** Test seams for the autopilot (specs/011): git, remote, verification, clock. */
   autopilotDeps?: Partial<Omit<AutopilotDeps, 'controller'>>;
+  /** Skills found at startup (specs/013), for /skills; absent → none. */
+  skills?: ControllerSkills;
   /** Test seams for the activity line (specs/009): clock and the waiting-phrase draw. */
   clock?: () => number;
   random?: () => number;
+}
+
+export interface ControllerSkills {
+  catalog: SkillCatalog;
+  state: SkillsState;
+  /** Home of the user root (/skills shows its paths as ~/.claude/skills/…). */
+  home: string;
 }
 
 /** In interactive mode the UI answers through controller.confirm(); the promise itself never settles. */
@@ -143,6 +155,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   readonly session: Session;
   commands: SlashCommand[];
   readonly specKit?: SpecKitService;
+  readonly skills: ControllerSkills;
   readonly tools: ToolDefinition[];
   readonly system: string;
   readonly debug: boolean;
@@ -178,6 +191,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     ask?: (request: AskUserRequest) => Promise<AskUserOutcome>;
     confirm?: (action: Omit<PendingToolAction, 'resolve'>) => Promise<boolean>;
     networkRetries?: number;
+    onToolResult?: (name: string, result: ToolResult) => void;
   } = {};
   readonly clock: () => number;
   private readonly random: () => number;
@@ -219,6 +233,7 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.env = opts.env ?? opts.ctx.env ?? process.env;
     this.settingsPaths = opts.settingsPaths;
     this.specKit = opts.specKit;
+    this.skills = opts.skills ?? { catalog: EMPTY_CATALOG, state: 'on', home: '' };
     this.baseCommands = [
       ...(opts.commands ?? DEFAULT_COMMANDS),
       ...(opts.specKit?.commands() ?? []),
@@ -573,9 +588,16 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     approvalMode?: ApprovalMode;
     /** Connection failures retried in a row (the autopilot passes Infinity). */
     networkRetries?: number;
+    /** Sees every tool result of the run (the autopilot logs skill loads, specs/013). */
+    onToolResult?: (name: string, result: ToolResult) => void;
   }): () => void {
     const previous = { overrides: this.overrides, mode: this.approvalMode };
-    this.overrides = { ask: o.ask, confirm: o.confirm, networkRetries: o.networkRetries };
+    this.overrides = {
+      ask: o.ask,
+      confirm: o.confirm,
+      networkRetries: o.networkRetries,
+      onToolResult: o.onToolResult,
+    };
     if (o.approvalMode) this.approvalMode = o.approvalMode;
     this.emit('change');
     let restored = false;
@@ -865,6 +887,17 @@ export class SessionController extends EventEmitter<ControllerEvents> {
         },
         onToolEnd: (name, r) => {
           feed({ type: 'toolEnd' });
+          const skill = r.display?.skill;
+          if (skill) {
+            this.logger.log('skill.load', {
+              name: skill.name,
+              source: skill.source,
+              file: skill.file,
+              ok: skill.ok,
+              bytes: r.output.length,
+            });
+          }
+          this.overrides.onToolResult?.(name, r);
           if (r.isError && toolNotices) this.notice(`⚠ ${name}: ${firstLine(r.output)}`, 'warn');
           this.partialText = '';
           this.emit('change');

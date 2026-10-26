@@ -122,6 +122,9 @@ Na primeira execução o Maestro cria `~/.maestro/settings.json` (Windows: `%USE
     "maxToolIterations": 0,
     "approvalMode": "default"
   },
+  "skills": {
+    "enabled": true
+  },
   "ui": {
     "altScreen": true,
     "mouse": true,
@@ -190,6 +193,7 @@ Na sessão:
 | `/routes`                                | Abre a tela de rotas por modelo: qual provedor/modelo atende a conversa, cada comando e as rotas `github`/`infra` (veja abaixo)             |
 | `/ask <rota> <pedido>`                   | Envia um pedido por uma rota específica sem trocar o modelo ativo (`/ask github …`, `/ask speckit.plan …`)                                  |
 | `/github …`, `/infra …`, `/<rota> …`     | Atalhos das rotas de propósito (as fixas e as que você criar em `/routes`)                                                                  |
+| `/skills`                                | Lista as skills encontradas (`.claude/skills`, `.agents/skills`, `~/.claude/skills`), as sombreadas e as ignoradas, com o motivo            |
 | `/clear`                                 | Nova conversa                                                                                                                               |
 | `/help`                                  | Lista comandos                                                                                                                              |
 | `/exit`                                  | Sai                                                                                                                                         |
@@ -234,6 +238,22 @@ O Maestro hospeda o [Spec Kit](https://github.com/github/spec-kit) do GitHub sem
 - **Branch da feature**: `/speckit.specify` cria e ativa a branch `NNN-nome` em repositórios git (`"speckit": { "createBranch": false }` desliga). A feature é rastreada por `.specify/feature.json`, pela branch git ou pela pasta mais recente em `specs/`.
 - **Contexto do projeto**: `MAESTRO.md` na raiz (ou `CLAUDE.md`, se só ele existir) entra no prompt de sistema; o `/speckit.plan` o mantém atualizado com as tecnologias do plano.
 - **Perguntas**: as clarificações do `specify` e do `clarify` chegam como diálogos `ask_user`.
+
+### Skills
+
+O Maestro lê as skills no formato do Claude Code: uma pasta com um `SKILL.md` cujo cabeçalho traz `name` e `description`. Ele procura em três lugares, nesta ordem:
+
+1. `.claude/skills/<nome>/SKILL.md` do projeto;
+2. `.agents/skills/<nome>/SKILL.md` do projeto;
+3. `~/.claude/skills/<nome>/SKILL.md` do usuário.
+
+Se o mesmo nome aparecer em mais de um lugar, vale o primeiro.
+
+O modelo recebe só uma lista curta, com o nome e a descrição de cada skill, e a regra de carregar a skill antes de uma tarefa que ela cobre. O conteúdo inteiro só entra quando o modelo chama a ferramenta `load_skill`. Ela devolve o `SKILL.md` e a lista dos arquivos de referência da skill, e com `file` lê um desses arquivos. Assim as skills da sua pasta pessoal ficam acessíveis, embora as outras ferramentas continuem confinadas à pasta de trabalho. A leitura de um arquivo nunca sai da pasta da skill.
+
+A carga não pede confirmação em nenhum modo e funciona com todos os provedores. Na conversa, ela aparece como `⏺ Skill(nome)`.
+
+`/skills` mostra o que foi encontrado. As skills sem `description` e as do Spec Kit (`speckit-*`) são ignoradas, porque o Maestro já hospeda esses comandos. `"skills": { "enabled": false }` desliga o recurso. Com `--no-tools`, as skills também ficam de fora. No autopiloto, cada carga grava no registro `.maestro/autopilot/<id>.jsonl` um evento `skill.load` com a história, a feature, o passo e a skill, sem o conteúdo.
 
 ### Perguntas do modelo (`ask_user`)
 
