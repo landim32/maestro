@@ -61,7 +61,14 @@ export interface TurnOptions {
   route?: string;
   /** Test seam: waits between rate-limit retries (resolves early when the turn is cancelled). */
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
+  /** Connection failures retried in a row before the turn ends (default NETWORK_RETRIES). */
+  networkRetries?: number;
 }
+
+/** Connection failures retried in a row (5 s … 80 s) before the turn ends with the error. */
+export const NETWORK_RETRIES = 5;
+/** Resends when the provider announces a tool call that never arrives. */
+export const LOST_TOOL_RETRIES = 2;
 
 /** Longest wait between rate-limit retries without a Retry-After from the provider. */
 export const MAX_BACKOFF_MS = 5 * 60_000;
@@ -90,12 +97,26 @@ const waitText = (ms: number) => {
 };
 
 /**
- * The provider refused because of its rate/usage limit: wait (the provider's Retry-After or an
- * exponential backoff capped at MAX_BACKOFF_MS) and let the caller retry the same request. The
- * turn is never ended by a rate limit; only a cancellation stops the wait. Returns false when
- * the turn was cancelled during the wait.
+ * Rate limits are always retried (never end a turn); connection failures up to
+ * `opts.networkRetries` times in a row.
  */
-async function waitForRateLimit(
+function retryable(
+  err: MaestroError | undefined,
+  networkAttempts: number,
+  opts: TurnOptions,
+): err is MaestroError {
+  if (!err) return false;
+  if (err.category === 'rate_limit') return true;
+  return err.category === 'network' && networkAttempts < (opts.networkRetries ?? NETWORK_RETRIES);
+}
+
+/**
+ * The provider refused because of its rate/usage limit, or the connection failed: wait (the
+ * provider's Retry-After or an exponential backoff capped at MAX_BACKOFF_MS) and let the caller
+ * retry the same request. Only a cancellation stops the wait. Returns false when the turn was
+ * cancelled during the wait.
+ */
+async function waitForRetry(
   err: MaestroError,
   attempt: number,
   signal: AbortSignal,
@@ -104,8 +125,10 @@ async function waitForRateLimit(
 ): Promise<boolean> {
   const ms = err.retryAfterMs ?? backoffMs(attempt);
   cb.onRetry?.(ms, attempt);
+  const what =
+    err.category === 'network' ? 'falha de conexão com o provedor' : 'limite de taxa do provedor';
   cb.onNotice?.(
-    `limite de taxa do provedor (${err.message}); aguardando ${waitText(ms)} e tentando de novo (tentativa ${attempt})`,
+    `${what} (${err.message}); aguardando ${waitText(ms)} e tentando de novo (tentativa ${attempt})`,
     'warn',
   );
   await (opts.sleep ?? defaultSleep)(ms, signal);
@@ -331,6 +354,7 @@ async function runProviderDrivenTurn(
 
   try {
     let rateAttempts = 0;
+    let networkAttempts = 0;
     let collected: Collected;
     for (;;) {
       const textBefore = fullText;
@@ -355,12 +379,14 @@ async function runProviderDrivenTurn(
         st.usage,
       );
       await queue;
-      if (collected.error?.category !== 'rate_limit' || st.ac.signal.aborted) break;
+      const err = collected.error;
+      if (!retryable(err, networkAttempts, opts) || st.ac.signal.aborted) break;
       // Tool calls already ran and are in the history; only the unflushed text is dropped.
       pending = '';
       fullText = textBefore;
       rateAttempts += 1;
-      if (!(await waitForRateLimit(collected.error, rateAttempts, st.ac.signal, opts, cb)))
+      if (err.category === 'network') networkAttempts += 1;
+      if (!(await waitForRetry(err, rateAttempts, st.ac.signal, opts, cb)))
         return { stopReason: 'cancelled', text: fullText, usage: st.usage, toolIterations: calls };
     }
 
@@ -453,6 +479,8 @@ export async function runTurn(
   let iterations = 0;
   let fullText = '';
   let rateAttempts = 0;
+  let networkAttempts = 0;
+  let lostToolRetries = 0;
   // Route model (specs/008) or the session override (--model / `/model claude x`).
   const model = opts.model ?? session.modelOverride;
 
@@ -470,13 +498,34 @@ export async function runTurn(
         cb,
         usage,
       );
-      if (collected.error?.category === 'rate_limit' && !ac.signal.aborted) {
+      const err = collected.error;
+      if (retryable(err, networkAttempts, opts) && !ac.signal.aborted) {
         // The partial reply is dropped; the same request is sent again after the wait.
         rateAttempts += 1;
-        if (await waitForRateLimit(collected.error, rateAttempts, ac.signal, opts, cb)) continue;
+        if (err.category === 'network') networkAttempts += 1;
+        if (await waitForRetry(err, rateAttempts, ac.signal, opts, cb)) continue;
         return { stopReason: 'cancelled', text: fullText, usage, toolIterations: iterations };
       }
       rateAttempts = 0;
+      networkAttempts = 0;
+      if (
+        !err &&
+        collected.stop === 'tool_use' &&
+        collected.toolCalls.length === 0 &&
+        (opts.tools?.length ?? 0) > 0 &&
+        lostToolRetries < LOST_TOOL_RETRIES &&
+        !ac.signal.aborted
+      ) {
+        // The provider announced a tool call that never arrived (incomplete stream): the partial
+        // reply is dropped and the same request is sent again.
+        lostToolRetries += 1;
+        cb.onRetry?.(0, lostToolRetries);
+        cb.onNotice?.(
+          'o provedor anunciou uma chamada de ferramenta que não chegou; reenviando o pedido',
+          'warn',
+        );
+        continue;
+      }
       fullText += collected.text;
 
       if (collected.error) {
@@ -543,7 +592,12 @@ export async function runTurn(
           );
           break;
         case 'tool_use':
-          cb.onNotice?.('the model requested a tool but none are available', 'warn');
+          cb.onNotice?.(
+            (opts.tools?.length ?? 0) > 0
+              ? 'o provedor anunciou uma chamada de ferramenta que não chegou (resposta incompleta)'
+              : 'the model requested a tool but none are available',
+            'warn',
+          );
           break;
         default:
           break;

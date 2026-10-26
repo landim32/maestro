@@ -2,7 +2,7 @@
  * Pure helpers for the Claude Code provider (specs/010 research R1–R6): command-line arguments,
  * the stdin message carrying the conversation, and the stdout stream-json parser.
  */
-import { MaestroError } from '../utils/errors.js';
+import { looksLikeNetworkError, MaestroError } from '../utils/errors.js';
 import type { ContentPart, Message, ProviderEvent } from './types.js';
 import type { Effort } from '../config/schema.js';
 
@@ -302,6 +302,12 @@ export function resultError(
         : undefined,
     });
   }
+  if (looksLikeNetworkError(text))
+    return new MaestroError({
+      providerId: 'claude-code',
+      category: 'network',
+      message: `falha de conexão do Claude Code: ${text}`,
+    });
   return new MaestroError({ providerId: 'claude-code', category: 'provider', message: text });
 }
 

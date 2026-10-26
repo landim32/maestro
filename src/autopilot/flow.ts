@@ -61,7 +61,8 @@ export function commitMessage(prefix: string, story: StoryRun, step: StepName): 
 
 function enterStep(s: FlowState, ctx: FlowContext): Step {
   const step = curStep(s);
-  if (step.status === 'failed' || step.status === 'interrupted') {
+  // 'running' = the process died in the middle of this step (resume of an orphan run).
+  if (step.status === 'failed' || step.status === 'interrupted' || step.status === 'running') {
     cur(s).steps[s.step] = emptyStep();
   }
   cur(s).steps[s.step].status = 'running';
@@ -171,7 +172,12 @@ export function onTurn(state: FlowState, ctx: FlowContext, o: TurnOutcome): Step
       };
     case 'continue':
       step.rounds += 1;
+      step.attempts = 0; // progress resets the implement reminders
       return { state: s, next: { type: 'turn', text: 'continue', clear: false } };
+    case 'nudge':
+      step.rounds += 1;
+      step.attempts += 1;
+      return { state: s, next: { type: 'turn', text: verdict.prompt, clear: false } };
     case 'question':
       return { state: s, next: { type: 'decide', question: verdict.question } };
     case 'fix':

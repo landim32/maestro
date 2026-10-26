@@ -212,6 +212,7 @@ export async function* streamAnthropicProtocol(
     : client.messages.stream(params as Anthropic.MessageStreamParams, { signal: req.signal });
 
   const pendingTools = new Map<number, { id: string; name: string; json: string }>();
+  const emitted = new Set<string>();
 
   try {
     for await (const event of stream as AsyncIterable<Anthropic.Beta.BetaRawMessageStreamEvent>) {
@@ -248,12 +249,20 @@ export async function* streamAnthropicProtocol(
               return;
             }
           }
+          emitted.add(t.id);
           yield { type: 'tool_call', callId: t.id, name: t.name, input };
         }
       }
     }
 
     const final = await stream.finalMessage();
+    // Some compatible endpoints never close a tool_use block; the SDK's final message has it.
+    for (const b of final.content) {
+      if (b.type === 'tool_use' && !emitted.has(b.id)) {
+        emitted.add(b.id);
+        yield { type: 'tool_call', callId: b.id, name: b.name, input: b.input ?? {} };
+      }
+    }
     yield {
       type: 'usage',
       inputTokens: final.usage.input_tokens,

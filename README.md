@@ -136,6 +136,8 @@ Em `tools`: `maxToolIterations` é quantas rodadas de ferramentas o modelo pode 
 
 **Limite de taxa ou de uso do provedor.** Quando o provedor recusa por excesso de pedidos, ou a assinatura do Claude Code atinge o limite de uso, o Maestro não encerra o turno. Ele avisa (`limite de taxa do provedor …; aguardando 30s e tentando de novo`), espera e reenvia o mesmo pedido. A espera é o tempo indicado pelo provedor (`Retry-After` ou o horário de liberação da assinatura). Sem indicação, ela começa em 5 s e dobra a cada tentativa, até 5 min. As ferramentas que já rodaram ficam no histórico, e só a resposta parcial é descartada. O Esc interrompe a espera.
 
+**Falha de conexão.** Uma queda de rede (`ECONNRESET`, `fetch failed`, `stream disconnected`…) também espera e reenvia, com o mesmo intervalo crescente, até 5 vezes seguidas. Depois disso o turno termina com o erro. No autopiloto não há limite de tentativas: a execução espera a conexão voltar. Quando o provedor anuncia uma chamada de ferramenta que não chega (resposta incompleta de um endpoint compatível), o Maestro reenvia o pedido até 2 vezes.
+
 Em `ui`: `pasteCollapseLines` é o número de linhas a partir do qual uma colagem vira marcador; `attachMaxBytes` limita cada arquivo colado, `attachMaxTotalBytes` o total anexado por mensagem e `imageMaxBytes` cada imagem.
 
 `providers.<id>.models` é a lista de modelos que o `/model` oferece para aquele provedor (edite à vontade; vazia ou ausente, vale a lista padrão acima). Um modelo digitado em "Digitar outro modelo…" ou passado em `/model <id> <modelo>` é acrescentado a ela automaticamente.
@@ -290,18 +292,18 @@ Como usuário, quero uma função greet(name) que devolve "Olá, <name>!".
 Como usuário, quero bye(name) que devolve "Tchau, <name>!".
 ```
 
-Um arquivo sem títulos `##` conta como uma história só. O texto antes do primeiro `##` vale como contexto para todas.
+Um arquivo sem títulos `##` conta como uma história só. O texto antes do primeiro `##` vale como contexto para todas. Se dois ou mais títulos `##` parecerem seções de um documento (`## Contexto`, `## Escopo`, `## Riscos`, `## Critérios de aceite`…), o autopiloto recusa começar: use `###` nas seções e `##` só no título de cada história.
 
 - **Cada história vira uma feature** com a própria branch `NNN-nome`. As histórias rodam em sequência, e cada branch parte da anterior. Cada passo começa numa conversa limpa, lê os artefatos do disco e usa a rota configurada para o comando em `/routes`. Cada passo concluído vira um commit (`fix: autopilot(012): plan`), então dá para desfazer passo a passo. O analyze só lê e não gera commit.
 - **Decisões automáticas.** As perguntas que os passos fariam a você vão para um decisor, que usa a rota `autopilot.decide` e por padrão segue `chat`. Isso inclui as clarificações, o "(yes/no)" do implement e qualquer pergunta deixada no fim de um turno. O decisor escolhe a opção recomendada, ou senão a que menos amplia escopo e risco, sempre com uma justificativa. Tudo fica em `specs/NNN-nome/decisions.md`, que é versionado, e em `.maestro/autopilot/<execução>.jsonl`, que é local.
 - **Portões entre os passos.**
   - specify, plan e tasks precisam criar o artefato.
   - Se o analyze apontar algo CRITICAL, há uma rodada de correção e uma nova análise.
-  - O implement repete "continue" enquanto marcar tarefas novas.
+  - O implement repete "continue" enquanto marcar tarefas novas. Se um turno terminar sem marcar nenhuma, o autopiloto pede que as tarefas concluídas sejam marcadas com `[X]` e que a implementação continue. Ele só para depois de 2 lembretes seguidos sem progresso.
   - A verificação (`autopilot.verify.command`; por padrão, os scripts `test`, `lint` e `build` do `package.json`) tem até `autopilot.verify.maxAttempts` correções.
   - Um portão que falha para a execução, com relatório e o comando de retomada.
 - **Segurança.** Durante a execução, o modo de aprovação é `auto`, nunca `yolo`. Edições e comandos comuns rodam, e comandos destrutivos são recusados. Escritas continuam confinadas à pasta. Nada vai para o remoto, a menos que você ligue `autopilot.push` (push e um PR por história, cada um com base na branch anterior). O merge exige também `autopilot.merge`.
-- **Limites e retomada.** Por padrão o autopiloto não tem teto: ele só para num portão que falha ou no Esc. Se quiser, `autopilot.limits` define tetos por história de turnos (0 ou pelo menos 7), minutos e tokens, com 0 = sem limite. O limite de taxa do provedor não para a execução, porque o turno espera e tenta de novo, e o tempo dessa espera não conta no teto de minutos. Ao retomar, a contagem da história recomeça do zero. O estado fica em `.specify/autopilot.json`, que é local e fica de fora dos commits pelo `.git/info/exclude`. Um Esc, um Ctrl+C ou o limite de uso do provedor interrompem o passo atual. As alterações parciais vão para um `git stash` nomeado, e `/autopilot --resume` recomeça desse passo.
+- **Limites e retomada.** Por padrão o autopiloto não tem teto: ele só para num portão que falha ou no Esc. Se quiser, `autopilot.limits` define tetos por história de turnos (0 ou pelo menos 7), minutos e tokens, com 0 = sem limite. O limite de taxa do provedor não para a execução, porque o turno espera e tenta de novo, e o tempo dessa espera não conta no teto de minutos. Ao retomar, a contagem da história recomeça do zero. O estado fica em `.specify/autopilot.json`, que é local e fica de fora dos commits pelo `.git/info/exclude`. Um Esc, um Ctrl+C ou o limite de uso do provedor interrompem o passo atual. As alterações parciais vão para um `git stash` nomeado, e `/autopilot --resume` recomeça desse passo. Se o processo morrer no meio (terminal fechado, queda de energia), `--resume` encontra a execução órfã e recomeça o passo que estava em andamento. As alterações que ficaram na árvore são mantidas e entram no commit do próximo passo.
 
 ```json
 {

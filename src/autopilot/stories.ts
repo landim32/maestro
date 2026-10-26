@@ -13,6 +13,17 @@ export function specifyText(story: Pick<Story, 'title' | 'body'>): string {
   return `${story.title}\n\n${story.body}`;
 }
 
+const SECTION_TITLE =
+  /^(?:\d+[.)]\s*)?(?:contexto|objetivos?|escopo|fora de escopo|crit[ée]rios? de aceite|regras|decis[õo]es|depend[êe]ncias|riscos|perguntas|premissas|hist[óo]ria|context|goals?|scope|out of scope|acceptance criteria|rules|decisions|dependencies|risks|open questions|assumptions|background)\b/i;
+
+/**
+ * Titles of "stories" that look like sections of one document (Contexto, Escopo, Riscos…). Two
+ * or more mean the file is probably a single story whose sections use "## ".
+ */
+export function sectionLikeTitles(stories: Story[]): string[] {
+  return stories.map((s) => s.title).filter((t) => SECTION_TITLE.test(t));
+}
+
 export function parseStories(markdown: string): Story[] | { error: string } {
   const text = markdown.replace(/\r\n/g, '\n');
   const lines = text.split('\n');

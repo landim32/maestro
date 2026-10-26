@@ -217,6 +217,14 @@ describe('claudeCodeStream — errors (research R6)', () => {
       resultError(r({ is_error: true, api_error_status: 429 }), newParserState(), clean)?.category,
     ).toBe('rate_limit');
   });
+  it('a connection failure → network (retried by runTurn)', () => {
+    const e = resultError(
+      r({ is_error: true, result: 'API Error: Connection error. (fetch failed)' }),
+      newParserState(),
+      clean,
+    );
+    expect(e).toMatchObject({ category: 'network', providerId: 'claude-code' });
+  });
   it('anything else → provider with the CLI message', () => {
     const e = resultError(
       r({

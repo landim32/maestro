@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { parseStories, specifyText } from '../../../src/autopilot/stories.js';
+import { parseStories, sectionLikeTitles, specifyText } from '../../../src/autopilot/stories.js';
 import {
   countTasks,
   criticalCount,
@@ -147,7 +147,7 @@ describe('gates (contracts/gates.md § 2)', () => {
       reason: '3 achados CRITICAL depois da correção',
     });
   });
-  it('implement: done, progress → continue, no progress → stop', () => {
+  it('implement: done, progress → continue, no progress → reminders, then stop', () => {
     const i = (b: number, open: number, done: number) =>
       snap({
         step: 'implement',
@@ -160,9 +160,27 @@ describe('gates (contracts/gates.md § 2)', () => {
       reason: '1/3 tarefas',
     });
     expect(evaluateGate(i(1, 2, 1), fresh)).toMatchObject({
-      kind: 'stop',
-      reason: 'sem progresso (1/3 tarefas)',
+      kind: 'nudge',
+      reason: 'nenhuma tarefa marcada (1/3)',
     });
+    expect(evaluateGate(i(1, 2, 1), { answers: 0, attempts: 1 }).kind).toBe('nudge');
+    expect(evaluateGate(i(1, 2, 1), { answers: 0, attempts: 2 })).toMatchObject({
+      kind: 'stop',
+      reason: 'sem progresso (1/3 tarefas) depois de 2 lembretes',
+    });
+  });
+  it('sectionLikeTitles: one story split in "## " sections vs real stories', () => {
+    const doc = parseStories(
+      '# HU 002\n\n## 1. História\nquero ver pedidos\n\n## 2. Contexto e objetivo\nx\n\n## 3. Escopo\ny\n\n## 8. Riscos\nz\n',
+    );
+    expect(Array.isArray(doc) && sectionLikeTitles(doc)).toEqual([
+      '1. História',
+      '2. Contexto e objetivo',
+      '3. Escopo',
+      '8. Riscos',
+    ]);
+    const real = parseStories('## Login\nentrar\n\n## Exportar CSV\ncsv\n\n## 3. Relatório\nr\n');
+    expect(Array.isArray(real) && sectionLikeTitles(real)).toEqual([]);
   });
   it('countTasks', () => {
     expect(countTasks('- [ ] T001 a\n- [X] T002 b\n* [x] T003 c\n- [ ] sem id\n')).toEqual({
