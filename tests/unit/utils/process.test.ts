@@ -85,3 +85,21 @@ describe('locateCodex (specs/012 research R7)', () => {
     });
   });
 });
+
+describe('locateClaudeCode (specs/010 research R7)', () => {
+  it('on Windows skips the npm POSIX shim and picks claude.exe, else claude.cmd', () => {
+    fs.writeFileSync(path.join(dir, 'claude'), '#!/bin/sh');
+    fs.writeFileSync(path.join(dir, 'claude.cmd'), '@echo off');
+    const env = { PATH: dir, PATHEXT: '.EXE;.CMD' };
+    expect(locateClaudeCode(undefined, { env, platform: 'win32' })).toBe(
+      path.join(dir, 'claude.cmd'),
+    );
+    fs.writeFileSync(path.join(dir, 'claude.exe'), '');
+    expect(locateClaudeCode(undefined, { env, platform: 'win32' })).toBe(
+      path.join(dir, 'claude.exe'),
+    );
+    expect(locateClaudeCode(undefined, { env: { PATH: dir }, platform: 'linux' })).toBe(
+      path.join(dir, 'claude'),
+    );
+  });
+});

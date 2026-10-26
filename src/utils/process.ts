@@ -84,14 +84,15 @@ export function locateCli(
 
 /**
  * Locates the user's Claude Code executable (specs/010 research R7): the configured `command`,
- * else `claude` on PATH. On Windows a real `.exe` is preferred over extensionless shims.
+ * else `claude` on PATH. On Windows only `claude.exe`, then the npm `claude.cmd`: the extensionless
+ * POSIX shim npm installs next to it cannot run there.
  */
 export function locateClaudeCode(
   command: string | undefined,
   opts: LocateOptions = {},
 ): string | undefined {
   const win = (opts.platform ?? process.platform) === 'win32';
-  return locateCli(command, win ? ['claude.exe', 'claude'] : ['claude'], opts);
+  return locateCli(command, win ? ['claude.exe', 'claude.cmd'] : ['claude'], opts);
 }
 
 /**
