@@ -252,6 +252,8 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     expect(r1.report).toMatch(/git stash "maestro autopilot .*002-despedida plan interrompido"/);
     expect(repo.git('status', '--porcelain')).toBe('');
     expect(repo.git('stash', 'list')).toMatch(/002-despedida plan interrompido/);
+    // uncommitted changes do not block the resume: they go into the next step's commit
+    repo.write('notas.txt', 'ajuste manual\n');
     const stepsBefore = a.model.steps.length;
     const r2 = await a.controller.createAutopilot().start(undefined, { resume: true });
     expect(r2.code).toBe(0);
@@ -259,6 +261,8 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     expect(resumed[0]).toBe('plan');
     expect(resumed).not.toContain('specify');
     expect(state().status).toBe('done');
+    expect(repo.git('ls-files', 'notas.txt')).toBe('notas.txt');
+    expect(repo.git('status', '--porcelain')).toBe('');
   });
 
   it('push on: each story is pushed and gets a PR whose base is the previous story; merge only with merge', async () => {
