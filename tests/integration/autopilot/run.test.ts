@@ -133,6 +133,10 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
       '  - Nenhuma tarefa em aberto\nDecisões: specs/001-saudao/decisions.md',
     );
     expect(progress.some((l) => l.includes('história 1/1 "Saudação" · specify'))).toBe(true);
+    // each automatic answer is shown with its question
+    expect(progress).toContain(
+      'autopiloto: pergunta no clarify: Qual formato de saudação?\n  ↳ resposta automática: Olá, nome! (Recommended) (recomendada) — É a opção recomendada e a mais simples.',
+    );
     // the state file is local: never committed, the tree stays clean
     expect(repo.git('status', '--porcelain')).toBe('');
     expect(repo.git('ls-files', '.specify/autopilot.json')).toBe('');

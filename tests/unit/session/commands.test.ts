@@ -89,8 +89,11 @@ describe('slash commands', () => {
   it('/clear empties the history when idle and is rejected while generating', async () => {
     const { ctl, session } = make();
     session.pushUser('x');
+    ctl.notice('antes');
     await executeSlash('/clear', ctl);
     expect(session.history).toHaveLength(0);
+    // notices from before the clear stay above the new conversation
+    expect(ctl.notices.map((n) => n.position)).toEqual([0, 0]);
     session.beginGeneration();
     await executeSlash('/clear', ctl);
     expect(ctl.notices.at(-1)?.level).toBe('warn');

@@ -1,7 +1,40 @@
 /** Final report (specs/011 contracts/autopilot-cli.md § 3). Pure. */
 import { formatElapsed } from '../session/activity.js';
 import { STEPS } from './types.js';
-import type { Run, StoryRun } from './types.js';
+import type { Decision, Run, StoryRun } from './types.js';
+
+const oneLine = (t: string) => t.replace(/\s+/g, ' ').trim();
+
+/**
+ * Progress lines of one decision (transcript / stderr): the question the run met and the answer
+ * the decider chose for it, with whether it followed the recommendation and why.
+ */
+export function decisionProgress(d: Decision): string {
+  const choice = Array.isArray(d.choice) ? d.choice.join(', ') : d.choice;
+  const rec =
+    d.followedRecommendation === true
+      ? ' (recomendada)'
+      : d.followedRecommendation === false
+        ? ' (não era a recomendada)'
+        : '';
+  const why = oneLine(d.rationale);
+  return [
+    `autopiloto: pergunta no ${d.step}: ${oneLine(d.question)}`,
+    `  ↳ resposta automática: ${oneLine(choice)}${rec}${why ? ` — ${why}` : ''}`,
+  ].join('\n');
+}
+
+/** Progress lines of a question the decider could not answer. */
+export function decisionFailedProgress(
+  step: string,
+  question: string | undefined,
+  reason: string,
+): string {
+  return [
+    `autopiloto: pergunta no ${step}${question ? `: ${oneLine(question)}` : ''}`,
+    `  ↳ sem resposta automática: ${reason}`,
+  ].join('\n');
+}
 
 function stepLine(story: StoryRun): string {
   return STEPS.map((name) => {
