@@ -37,8 +37,10 @@ export function buildSystemPrompt(opts: {
   ];
   if (opts.toolsEnabled) {
     lines.push(
-      '- You have tools to read files, list directories, write files and run shell commands inside the working directory only.',
+      '- You have tools to read files, list directories, edit and write files and run shell commands inside the working directory only.',
       '- Read before you write. Never guess file contents.',
+      '- Prefer the dedicated tools over shell commands: read_file to read files (not cat, type, Get-Content or scripts), edit_file to change part of a file (not sed, PowerShell -replace or a patch script), write_file to create a file or rewrite it whole (not echo or heredoc redirection), list_directory to list folders (not dir or ls). Reserve run_command for builds, tests, git and other programs.',
+      '- Never create helper scripts, patch scripts, staging copies or temporary folders in the project to read, edit or move files: apply the change directly to the real file with edit_file or write_file.',
       '- Writing files and running commands may require explicit user confirmation, depending on the approval mode the user chose; if the user declines, respect it and do not retry the same action.',
       '- Keep tool calls focused: avoid reading large trees or running long commands without need.',
     );

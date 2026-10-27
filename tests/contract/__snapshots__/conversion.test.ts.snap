@@ -111,6 +111,37 @@ exports[`contract: history and tool conversion per provider > Anthropic tools (a
     "name": "list_directory",
   },
   {
+    "description": "Replace text within a file inside the working directory. By default replaces a single occurrence; set replace_all to true to change every instance of old_string. Read the file with read_file first. old_string must be the exact literal text to replace (all whitespace, indentation and newlines), never escaped, and must identify one place: include a few lines of context before and after the change. If old_string is not found or matches several places, nothing is changed and the call fails. Use an empty old_string only to create a new file with new_string. May require user approval depending on the approval mode.",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {
+        "new_string": {
+          "description": "The exact literal text that replaces old_string.",
+          "type": "string",
+        },
+        "old_string": {
+          "description": "The exact literal text to replace, including whitespace and indentation, without the line-number prefix of read_file. Empty only to create a new file.",
+          "type": "string",
+        },
+        "path": {
+          "description": "File path, relative to the working directory.",
+          "type": "string",
+        },
+        "replace_all": {
+          "description": "Replace every occurrence of old_string (default false: it must be unique).",
+          "type": "boolean",
+        },
+      },
+      "required": [
+        "path",
+        "old_string",
+        "new_string",
+      ],
+      "type": "object",
+    },
+    "name": "edit_file",
+  },
+  {
     "description": "Create or overwrite a text file inside the working directory with the given full content. May require user approval depending on the approval mode.",
     "input_schema": {
       "additionalProperties": false,
@@ -327,6 +358,40 @@ exports[`contract: history and tool conversion per provider > OpenAI-compatible 
             "type": "boolean",
           },
         },
+        "type": "object",
+      },
+    },
+    "type": "function",
+  },
+  {
+    "function": {
+      "description": "Replace text within a file inside the working directory. By default replaces a single occurrence; set replace_all to true to change every instance of old_string. Read the file with read_file first. old_string must be the exact literal text to replace (all whitespace, indentation and newlines), never escaped, and must identify one place: include a few lines of context before and after the change. If old_string is not found or matches several places, nothing is changed and the call fails. Use an empty old_string only to create a new file with new_string. May require user approval depending on the approval mode.",
+      "name": "edit_file",
+      "parameters": {
+        "additionalProperties": false,
+        "properties": {
+          "new_string": {
+            "description": "The exact literal text that replaces old_string.",
+            "type": "string",
+          },
+          "old_string": {
+            "description": "The exact literal text to replace, including whitespace and indentation, without the line-number prefix of read_file. Empty only to create a new file.",
+            "type": "string",
+          },
+          "path": {
+            "description": "File path, relative to the working directory.",
+            "type": "string",
+          },
+          "replace_all": {
+            "description": "Replace every occurrence of old_string (default false: it must be unique).",
+            "type": "boolean",
+          },
+        },
+        "required": [
+          "path",
+          "old_string",
+          "new_string",
+        ],
         "type": "object",
       },
     },

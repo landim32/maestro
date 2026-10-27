@@ -76,7 +76,8 @@ export function messageRows(m: Message, width: number): number {
     rows = (m.route && m.route !== 'chat' ? 1 : 0) + (text !== '' ? textRows(text, width - 2) : 0);
     // `⏺ Label(arg)` + `⎿ summary`; a write's diff can add up to TRANSCRIPT_DIFF_LINES.
     for (const p of m.content)
-      if (p.type === 'tool_call') rows += p.name === 'write_file' ? 3 + TRANSCRIPT_DIFF_LINES : 2;
+      if (p.type === 'tool_call')
+        rows += p.name === 'write_file' || p.name === 'edit_file' ? 3 + TRANSCRIPT_DIFF_LINES : 2;
   } else rows = m.content.length;
   rowsCache.set(m, { width, rows });
   return rows;

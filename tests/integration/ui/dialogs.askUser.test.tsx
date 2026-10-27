@@ -183,6 +183,7 @@ describe('ask_user dialog (US2)', () => {
     expect(toolsFor(makeSettings().tools).map((t) => t.name)).toEqual([
       'read_file',
       'list_directory',
+      'edit_file',
       'write_file',
       'run_command',
       'ask_user',
