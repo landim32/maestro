@@ -26,7 +26,8 @@ export function useSession(controller: SessionController) {
     [commandList],
   );
   return {
-    history: s.history,
+    /** What the transcript shows (archived autopilot steps + the current conversation). */
+    history: s.transcript,
     state: s.state,
     partialText: controller.partialText,
     notices: controller.notices,

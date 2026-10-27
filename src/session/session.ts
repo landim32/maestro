@@ -28,6 +28,11 @@ export class Session extends EventEmitter<SessionEvents> {
   activeProviderId: ProviderId;
   modelOverride?: string;
   history: Message[] = [];
+  /**
+   * Messages cleared from the model's context but still on screen (the autopilot starts each step
+   * with a clean conversation, specs/011); emptied by a plain clear.
+   */
+  archived: Message[] = [];
   state: SessionState = 'idle';
   pendingConfirmation?: PendingToolAction;
   /** `ask_user` waiting for the UI (contracts/ask-user.md). At most one of the two pendings is set. */
@@ -99,10 +104,17 @@ export class Session extends EventEmitter<SessionEvents> {
     this.changed();
   }
 
-  clear(): void {
+  /** `keepTranscript`: the model starts over, but the screen keeps showing what came before. */
+  clear(opts: { keepTranscript?: boolean } = {}): void {
     if (this.state !== 'idle') throw new SessionBusyError('clear the conversation');
+    this.archived = opts.keepTranscript ? [...this.archived, ...this.history] : [];
     this.history = [];
     this.changed();
+  }
+
+  /** What the transcript shows: the archived messages followed by the current conversation. */
+  get transcript(): Message[] {
+    return this.archived.length === 0 ? this.history : [...this.archived, ...this.history];
   }
 
   switchProvider(id: ProviderId, model?: string): void {

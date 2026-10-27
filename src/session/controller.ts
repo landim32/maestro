@@ -88,7 +88,7 @@ export interface Notice {
   id: number;
   level: NoticeLevel;
   text: string;
-  /** Index in `session.history` after which this notice was emitted. */
+  /** Index in `session.transcript` after which this notice was emitted. */
   position: number;
 }
 
@@ -396,7 +396,12 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   }
 
   notice(text: string, level: NoticeLevel = 'info'): void {
-    this.notices.push({ id: ++this.noticeSeq, level, text, position: this.session.history.length });
+    this.notices.push({
+      id: ++this.noticeSeq,
+      level,
+      text,
+      position: this.session.archived.length + this.session.history.length,
+    });
     this.emit('change');
   }
 
@@ -566,12 +571,16 @@ export class SessionController extends EventEmitter<ControllerEvents> {
     this.emit('change');
   }
 
-  clearConversation(opts: { quiet?: boolean } = {}): void {
+  /**
+   * `keepTranscript` (autopilot steps): only the model's context is cleared; the screen goes on
+   * as one continuous transcript, without the banner coming back or the scroll resetting.
+   */
+  clearConversation(opts: { quiet?: boolean; keepTranscript?: boolean } = {}): void {
     try {
-      this.session.clear();
-      // Earlier notices now come before everything: their positions pointed into the old history,
-      // which would place them among the next messages (e.g. autopilot steps).
-      for (const n of this.notices) n.position = 0;
+      this.session.clear({ keepTranscript: opts.keepTranscript });
+      // Earlier notices now come before everything: their positions pointed into the old
+      // transcript, which would place them among the next messages.
+      if (!opts.keepTranscript) for (const n of this.notices) n.position = 0;
       if (!opts.quiet) this.notice('Conversation cleared.', 'info');
     } catch (err) {
       if (err instanceof SessionBusyError) this.notice(err.message, 'warn');
