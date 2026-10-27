@@ -96,7 +96,7 @@ const help: SlashCommand = {
         return `  ${m.padEnd(10)} ${info.label.padEnd(16)} ${info.description}`;
       }),
       '',
-      'Tools: read_file, list_directory, write_file, run_command and ask_user (the model asks you a',
+      'Tools: read_file, list_directory, edit_file, write_file, run_command and ask_user (the model asks you a',
       'multiple-choice question; ↑↓ / 1-9 choose, Space marks, Enter confirms, Esc declines).',
     );
     ctl.notice(lines.join('\n'), 'info');

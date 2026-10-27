@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { LARGE_BANNER, LARGE_BANNER_WIDTH, pickBannerVariant } from '../../../src/ui/banner.js';
 import { visualWidth } from '../../../src/utils/width.js';
+import { VERSION } from '../../../src/version.js';
 import { cleanupSized, waitForFrame } from '../../helpers/renderSized.js';
 import { mountApp } from '../../helpers/appHarness.js';
 
@@ -36,7 +37,7 @@ describe('Banner in the App', () => {
     await waitForFrame(ui, 'Type a message');
     const frame = ui.lastFrame() ?? '';
     for (const line of LARGE_BANNER) expect(frame).toContain(line.trimEnd()); // Ink trims trailing spaces
-    expect(frame).toContain('v0.1.0 · claude / claude-opus-5-5');
+    expect(frame).toContain(`v${VERSION} · claude / claude-opus-5-5`);
   });
 
   it('80x24 shows the compact mark without block art', async () => {

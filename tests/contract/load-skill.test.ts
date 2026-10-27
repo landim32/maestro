@@ -34,10 +34,17 @@ describe('load_skill definition', () => {
   it('offered only when the catalogue has skills; never with tools disabled', () => {
     const tools = makeSettings().tools;
     const names = (skills?: SkillCatalog) => toolsFor(tools, { skills }).map((t) => t.name);
-    const today = ['read_file', 'list_directory', 'write_file', 'run_command', 'ask_user'];
+    const today = [
+      'read_file',
+      'list_directory',
+      'edit_file',
+      'write_file',
+      'run_command',
+      'ask_user',
+    ];
     expect(toolsFor(tools).map((t) => t.name)).toEqual(today);
     expect(names(EMPTY_CATALOG)).toEqual(today);
-    expect(names(catalog)).toEqual([...today.slice(0, 4), 'load_skill', 'ask_user']);
+    expect(names(catalog)).toEqual([...today.slice(0, 5), 'load_skill', 'ask_user']);
     expect(toolsFor({ ...tools, enabled: false }, { skills: catalog }).map((t) => t.name)).toEqual([
       'ask_user',
     ]);

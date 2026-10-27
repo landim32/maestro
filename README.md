@@ -4,7 +4,7 @@ Assistente de IA para o terminal com suporte a múltiplos modelos. Hoje é um ch
 
 - Provedores: **Claude** pela API da Anthropic (consome créditos de API), **Claude Code** (usa o Claude Code instalado e logado com a sua assinatura do claude.ai), **Codex** (usa o Codex CLI instalado e logado com a sua conta do ChatGPT) e **Qwen** (Alibaba Cloud DashScope). Ative e configure cada um em `settings.json` ou com `/auth`.
 - Sessão interativa com streaming, histórico de conversa, troca de provedor a quente (`/model`), cancelamento com Esc.
-- Ferramentas: ler arquivos, listar diretórios, escrever arquivos e executar comandos, sempre confinadas à pasta atual. Quatro modos de aprovação (Shift+Tab alterna) decidem o que pede sua confirmação; `ask_user` deixa o modelo fazer perguntas de múltipla escolha.
+- Ferramentas: ler arquivos, listar diretórios, editar trechos de arquivos (`edit_file`, troca de um texto exato por outro, como o `edit` do qwen-code), escrever arquivos e executar comandos, sempre confinadas à pasta atual. O system prompt pede ao modelo que use essas ferramentas em vez de `cat`/`sed`/scripts e que nunca crie scripts auxiliares ou cópias temporárias para editar arquivos. No Windows, a saída dos comandos é decodificada pela página de código do console (850, 437, `windows-125x`…) quando não é UTF-8, então os acentos chegam certos ao modelo. Quatro modos de aprovação (Shift+Tab alterna) decidem o que pede sua confirmação; `ask_user` deixa o modelo fazer perguntas de múltipla escolha.
 - Modo não interativo (`maestro -p "..."`) para scripts.
 - Software livre (MIT), e assim continuará. Partes adaptadas do [qwen-code](https://github.com/QwenLM/qwen-code); veja [Créditos](#créditos).
 

@@ -33,7 +33,13 @@ export interface ToolResultDisplay {
 }
 
 export type ToolName =
-  'read_file' | 'list_directory' | 'write_file' | 'run_command' | 'ask_user' | 'load_skill';
+  | 'read_file'
+  | 'list_directory'
+  | 'edit_file'
+  | 'write_file'
+  | 'run_command'
+  | 'ask_user'
+  | 'load_skill';
 
 // ---------------------------------------------------------------- ask_user (contracts/ask-user.md)
 

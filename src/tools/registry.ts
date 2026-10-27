@@ -2,6 +2,7 @@ import type { ToolsSettings } from '../config/schema.js';
 import type { SkillCatalog } from '../skills/catalog.js';
 import { createLoadSkillTool } from './loadSkill.js';
 import { askUserTool } from './askUser.js';
+import { editFileTool } from './editFile.js';
 import { listDirectoryTool } from './listDirectory.js';
 import { readFileTool } from './readFile.js';
 import { runCommandTool } from './runCommand.js';
@@ -12,6 +13,7 @@ import { writeFileTool } from './writeFile.js';
 const WORKSPACE: ToolDefinition[] = [
   readFileTool as ToolDefinition,
   listDirectoryTool as ToolDefinition,
+  editFileTool as ToolDefinition,
   writeFileTool as ToolDefinition,
   runCommandTool as ToolDefinition,
 ];

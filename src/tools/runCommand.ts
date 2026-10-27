@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { z } from 'zod';
+import { decodeCommandOutput } from '../utils/consoleEncoding.js';
 import { killTree } from '../utils/process.js';
 import { resolveInsideCwd, truncate } from './sandbox.js';
 import type { ToolDefinition } from './types.js';
@@ -57,12 +58,17 @@ export const runCommandTool: ToolDefinition<RunCommandInput> = {
         env: process.env,
       });
 
-      const chunks: string[] = [];
+      // Bytes are decoded once at the end: the encoding is decided on the whole output and a
+      // multi-byte character split across chunks stays intact.
+      const chunks: Buffer[] = [];
+      let size = 0;
       let timedOut = false;
       let settled = false;
-      const limit = ctx.settings.maxOutputChars * 2; // keep memory bounded; final truncation below
+      const limit = ctx.settings.maxOutputChars * 4; // keep memory bounded; final truncation below
       const collect = (buf: Buffer) => {
-        if (chunks.join('').length < limit) chunks.push(buf.toString('utf8'));
+        if (size >= limit) return;
+        chunks.push(buf);
+        size += buf.length;
       };
       child.stdout?.on('data', collect);
       child.stderr?.on('data', collect);
@@ -84,7 +90,10 @@ export const runCommandTool: ToolDefinition<RunCommandInput> = {
         ctx.signal.removeEventListener('abort', onAbort);
         child.stdout?.destroy();
         child.stderr?.destroy();
-        const out = truncate(chunks.join(''), ctx.settings.maxOutputChars);
+        const out = truncate(
+          decodeCommandOutput(Buffer.concat(chunks)),
+          ctx.settings.maxOutputChars,
+        );
         if (error)
           return resolve({ isError: true, output: `failed to start command: ${error.message}` });
         if (ctx.signal.aborted)

@@ -14,18 +14,20 @@ names its origin and states that it was modified for Maestro.
 
 Files in Maestro containing adapted material:
 
-| Maestro                            | Origin in qwen-code                                                                           |
-| ---------------------------------- | --------------------------------------------------------------------------------------------- |
-| `src/tools/approval.ts`            | `packages/core/src/config/approval-mode.ts`, `packages/cli/src/config/approval-mode-value.ts` |
-| `src/tools/askUser.ts`             | `packages/core/src/tools/askUserQuestion.ts`                                                  |
-| `src/setup/askUserFlow.ts`         | `packages/cli/src/ui/components/messages/AskUserQuestionDialog.tsx`                           |
-| `src/ui/dialogs/AskUserDialog.tsx` | `packages/cli/src/ui/components/messages/AskUserQuestionDialog.tsx`                           |
-| `src/ui/components/StatusBar.tsx`  | `packages/cli/src/ui/components/approvalModeVisuals.ts`                                       |
+| Maestro                            | Origin in qwen-code                                                                             |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `src/tools/approval.ts`            | `packages/core/src/config/approval-mode.ts`, `packages/cli/src/config/approval-mode-value.ts`   |
+| `src/tools/askUser.ts`             | `packages/core/src/tools/askUserQuestion.ts`                                                    |
+| `src/setup/askUserFlow.ts`         | `packages/cli/src/ui/components/messages/AskUserQuestionDialog.tsx`                             |
+| `src/ui/dialogs/AskUserDialog.tsx` | `packages/cli/src/ui/components/messages/AskUserQuestionDialog.tsx`                             |
+| `src/ui/components/StatusBar.tsx`  | `packages/cli/src/ui/components/approvalModeVisuals.ts`                                         |
+| `src/tools/editFile.ts`            | `packages/core/src/tools/edit.ts` (commit `a4dd42c4d67927dfd600d8e87d0c8f670c478ed9`)           |
+| `src/utils/consoleEncoding.ts`     | `packages/core/src/utils/systemEncoding.ts` (commit `a4dd42c4d67927dfd600d8e87d0c8f670c478ed9`) |
 
 What was adapted: the approval-mode identifiers and cycle order, the spelling normalisation of
 mode names, the `ask_user` parameter schema, validation messages, model-facing description and
 answer format, the keyboard semantics of the question dialog (digits, Space, free-text "Other"),
-and the colour scheme of the approval-mode indicator. Everything was rewritten for Maestro's
+the colour scheme of the approval-mode indicator, the `edit_file` parameters (`old_string`, `new_string`, `replace_all`), its model-facing description and failure messages, and the strategy for decoding command output (UTF-8 first, then the Windows console code page from `chcp`). Everything was rewritten for Maestro's
 architecture (zod schemas, pure reducers, Ink components).
 
 ## gemini-cli

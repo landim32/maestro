@@ -60,6 +60,8 @@ export function describeCall(
       return { label: 'List', arg: str(input, 'path') ?? '.', cut: 'middle' };
     case 'write_file':
       return { label: 'Write', arg: str(input, 'path') ?? '', cut: 'middle' };
+    case 'edit_file':
+      return { label: 'Update', arg: str(input, 'path') ?? '', cut: 'middle' };
     case 'run_command':
       return { label: commandLabel(opts.platform), arg: str(input, 'command') ?? '', cut: 'end' };
     case 'load_skill': {
@@ -139,6 +141,7 @@ export function describeResult(name: string, part: ResultPart): ResultView {
       });
     }
     case 'write_file':
+    case 'edit_file':
       return withAuto({
         tone: 'ok',
         lines: [d?.diff ? diffHeader(d.diff, 'transcript') : (out[0] ?? '')],
