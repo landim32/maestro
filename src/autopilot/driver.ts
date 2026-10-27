@@ -38,7 +38,7 @@ import {
   rewriteProtected,
 } from './log.js';
 import type { RemotePort } from './remote.js';
-import { formatReport } from './report.js';
+import { decisionFailedProgress, decisionProgress, formatReport } from './report.js';
 import { checkResume, resumeBranch } from './resume.js';
 import { isPidAlive, readRunState, writeRunState } from './state.js';
 import { looksLikePath, parseStories, promptStoriesFile, sectionLikeTitles } from './stories.js';
@@ -643,11 +643,13 @@ export class AutopilotDriver {
       reason,
       ...detail,
     });
+    this.progress(decisionFailedProgress(st.step, detail?.question, reason));
   }
 
   private record(root: string, runId: string, d: Decision): void {
     this.decisions.push(d);
     appendJsonl(root, runId, { event: 'decision', ...d });
+    this.progress(decisionProgress(d));
     this.ctl.logger.log('autopilot.decision', {
       story: d.story,
       step: d.step,

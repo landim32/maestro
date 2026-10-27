@@ -31,7 +31,12 @@ import {
   toDecisionOptions,
 } from '../../../src/autopilot/decider.js';
 import { renderDecisions, rewriteProtected } from '../../../src/autopilot/log.js';
-import { formatReport, statusText } from '../../../src/autopilot/report.js';
+import {
+  decisionFailedProgress,
+  decisionProgress,
+  formatReport,
+  statusText,
+} from '../../../src/autopilot/report.js';
 import { checkResume, resumeBranch } from '../../../src/autopilot/resume.js';
 import { readRunState, writeRunState } from '../../../src/autopilot/state.js';
 import { emptyStory } from '../../../src/autopilot/types.js';
@@ -589,5 +594,31 @@ describe('resume checks (contracts/state-file.md § 3)', () => {
     expect(resumeBranch(r)).toBe('012-login');
     r.stories[0]!.branch = undefined;
     expect(resumeBranch(r)).toBe('main');
+  });
+});
+
+describe('decision progress lines', () => {
+  const d = {
+    at: '2026-10-26T00:00:00Z',
+    story: 1,
+    step: 'clarify' as const,
+    kind: 'options' as const,
+    question: 'Qual formato\nde saudação?',
+    choice: 'Olá, nome!',
+    rationale: 'É a mais simples.',
+    followedRecommendation: true,
+    provider: 'claude',
+    model: 'm',
+  };
+  it('shows the question and the chosen answer', () => {
+    expect(decisionProgress(d)).toBe(
+      'autopiloto: pergunta no clarify: Qual formato de saudação?\n  ↳ resposta automática: Olá, nome! (recomendada) — É a mais simples.',
+    );
+    expect(decisionProgress({ ...d, choice: ['A', 'B'], followedRecommendation: false })).toContain(
+      '↳ resposta automática: A, B (não era a recomendada)',
+    );
+    expect(decisionFailedProgress('plan', 'Qual?', 'escolha fora das opções')).toBe(
+      'autopiloto: pergunta no plan: Qual?\n  ↳ sem resposta automática: escolha fora das opções',
+    );
   });
 });

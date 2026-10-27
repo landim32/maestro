@@ -569,6 +569,9 @@ export class SessionController extends EventEmitter<ControllerEvents> {
   clearConversation(opts: { quiet?: boolean } = {}): void {
     try {
       this.session.clear();
+      // Earlier notices now come before everything: their positions pointed into the old history,
+      // which would place them among the next messages (e.g. autopilot steps).
+      for (const n of this.notices) n.position = 0;
       if (!opts.quiet) this.notice('Conversation cleared.', 'info');
     } catch (err) {
       if (err instanceof SessionBusyError) this.notice(err.message, 'warn');
