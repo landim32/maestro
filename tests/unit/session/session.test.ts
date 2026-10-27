@@ -145,4 +145,19 @@ describe('Session', () => {
     s.clear();
     expect(spy).toHaveBeenCalledTimes(5);
   });
+
+  it('clear with keepTranscript empties the model context but keeps the transcript (specs/011)', () => {
+    const s = make();
+    s.pushUser('specify');
+    s.clear({ keepTranscript: true });
+    s.pushUser('clarify');
+    expect(s.history.map((m) => m.content[0])).toEqual([{ type: 'text', text: 'clarify' }]);
+    expect(s.transcript.map((m) => m.content[0])).toEqual([
+      { type: 'text', text: 'specify' },
+      { type: 'text', text: 'clarify' },
+    ]);
+    s.clear();
+    expect(s.transcript).toEqual([]);
+    expect(s.archived).toEqual([]);
+  });
 });

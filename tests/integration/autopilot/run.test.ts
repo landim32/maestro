@@ -140,6 +140,10 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     // the state file is local: never committed, the tree stays clean
     expect(repo.git('status', '--porcelain')).toBe('');
     expect(repo.git('ls-files', '.specify/autopilot.json')).toBe('');
+    // each step starts the model over, but the screen keeps one continuous transcript
+    const steps = (msgs: typeof controller.session.history) =>
+      msgs.filter((m) => m.role === 'user').length;
+    expect(steps(controller.session.transcript)).toBeGreaterThan(steps(controller.session.history));
     // overrides restored
     expect(controller.approvalMode).toBe('default');
     expect(controller.autopilotStatus).toBeUndefined();

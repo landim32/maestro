@@ -442,7 +442,7 @@ export class AutopilotDriver {
     switch (next.type) {
       case 'turn': {
         if (next.clear) {
-          this.ctl.clearConversation({ quiet: true });
+          this.ctl.clearConversation({ quiet: true, keepTranscript: true });
           this.progress(`autopiloto: ${label} "${st.run.stories[st.story]!.title}" · ${st.step}…`);
         } else {
           this.progress(
