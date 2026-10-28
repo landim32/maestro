@@ -8,12 +8,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { AutopilotSettings } from '../config/schema.js';
 import type { SessionController } from '../session/controller.js';
-import { findSpecifyRoot, readFeatureJson } from '../speckit/feature.js';
+import {
+  findSpecifyRoot,
+  isFeatureName,
+  readFeatureJson,
+  writeFeatureJson,
+} from '../speckit/feature.js';
 import type { GitCommitPort, GitPort } from '../speckit/git.js';
 import { resolveInsideCwd } from '../tools/sandbox.js';
 import { runCommandTool } from '../tools/runCommand.js';
 import { formatElapsed } from '../session/activity.js';
-import { asAskUserHandler, createDecider, DeciderError } from './decider.js';
+import { answerText } from '../tools/askUser.js';
+import { asAskUserHandler, createDecider, DeciderError, toDecisionOptions } from './decider.js';
 import type { Decider, DeciderFailure, DecisionContext } from './decider.js';
 import {
   claimFeature,
@@ -29,7 +35,7 @@ import {
 import type { FlowContext, NextAction, Step } from './flow.js';
 import { countTasks, openTaskLines } from './gates.js';
 import type { ArtifactInfo, DiskView } from './gates.js';
-import type { ToolResult } from '../tools/types.js';
+import type { AskUserOutcome, AskUserRequest, ToolResult } from '../tools/types.js';
 import {
   appendJsonl,
   decisionsPath,
@@ -42,8 +48,12 @@ import { decisionFailedProgress, decisionProgress, formatReport } from './report
 import { checkResume, resumeBranch } from './resume.js';
 import { isPidAlive, readRunState, writeRunState } from './state.js';
 import { looksLikePath, parseStories, promptStoriesFile, sectionLikeTitles } from './stories.js';
-import { emptyStory, STEPS } from './types.js';
+import { emptyStep, emptyStory, STEPS } from './types.js';
+import { adoptedStoryText, detectProgress, newestFeature, pickFeature } from './adopt.js';
 import type { Decision, Run, Story } from './types.js';
+
+/** Option of a text question shown to the user: leave the answer to the decider. */
+export const AUTO_ANSWER_LABEL = 'Deixar o autopiloto decidir';
 
 export interface VerifyPort {
   run(command: string, cwd: string, timeoutMs: number): Promise<{ code: number; output: string }>;
@@ -183,7 +193,8 @@ export class AutopilotDriver {
    */
   async start(
     input: string | undefined,
-    opts: { resume?: boolean } = {},
+    /** `continue`: `input` is the feature (optional) started outside the autopilot. */
+    opts: { resume?: boolean; continue?: boolean } = {},
   ): Promise<AutopilotResult> {
     const cwd = this.ctl.session.cwd;
     const git = this.deps.git;
@@ -203,6 +214,16 @@ export class AutopilotDriver {
 
     const saved = readRunState(root);
     if (saved && 'error' in saved) return refuse(saved.error);
+    if (opts.continue) {
+      if (opts.resume) return refuse('Use --continue ou --resume, não os dois.');
+      if (saved && saved.status === 'active' && saved.pid !== this.pid && isPidAlive(saved.pid))
+        return refuse(
+          `Já existe uma execução ativa (pid ${saved.pid}, iniciada em ${saved.startedAt}).`,
+        );
+      const adopted = this.adopt(root, input?.trim() || undefined, newId);
+      if ('error' in adopted) return refuse(adopted.error);
+      return this.execute(root, adopted.run, adopted.stories, false);
+    }
     let inputRel = input?.trim() || undefined;
     if (inputRel && !fs.existsSync(path.join(root, inputRel)) && !looksLikePath(inputRel)) {
       if (opts.resume)
@@ -322,6 +343,115 @@ export class AutopilotDriver {
       };
     }
 
+    return this.execute(root, run, stories, resuming);
+  }
+
+  /**
+   * `/autopilot --continue [feature]`: a run of one story over a feature started elsewhere (by
+   * hand, in Claude Code, in another Spec Kit agent). The steps its artifacts show as done are
+   * marked done at HEAD; the run starts at the first one left. Uncommitted work stays on disk and
+   * goes into the next step's commit.
+   */
+  private adopt(
+    root: string,
+    arg: string | undefined,
+    id: string,
+  ): { run: Run; stories: Story[] } | { error: string } {
+    const git = this.deps.git;
+    const specs = path.join(root, 'specs');
+    let dirs: string[] = [];
+    try {
+      dirs = fs
+        .readdirSync(specs, { withFileTypes: true })
+        .filter((e) => e.isDirectory())
+        .map((e) => e.name);
+    } catch {
+      dirs = [];
+    }
+    // A feature also counts when only its branch has it (e.g. created in Claude Code, now on main).
+    const names = [...new Set([...dirs, ...git.branches(root).filter(isFeatureName)])];
+    const current = git.currentBranch(root);
+    const fromJson = readFeatureJson(root);
+    const picked = pickFeature(
+      names,
+      arg,
+      fromJson ? path.basename(fromJson) : current,
+      newestFeature(names),
+    );
+    if (typeof picked !== 'string') return picked;
+    let branch = current;
+    if (current !== picked && git.branchExists(root, picked)) {
+      try {
+        git.checkoutExisting(root, picked);
+        branch = picked;
+      } catch {
+        return {
+          error: `Não foi possível trocar para a branch ${picked}: as alterações não commitadas conflitam com ela.`,
+        };
+      }
+    }
+    const read = (file: string) => {
+      try {
+        return fs.readFileSync(path.join(specs, picked, file), 'utf8');
+      } catch {
+        return undefined;
+      }
+    };
+    const spec = read('spec.md');
+    const found = detectProgress({ spec, plan: read('plan.md'), tasks: read('tasks.md') });
+    if ('error' in found) return { error: `${picked}: ${found.error}` };
+    writeFeatureJson(root, `specs/${picked}`);
+
+    const text = promptStoriesFile(adoptedStoryText(spec!, picked));
+    const file = path.join(path.dirname(jsonlPath(root, id)), `${id}.md`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+    const stories = parseStories(text) as Story[];
+    const story = emptyStory(stories[0]!);
+    story.feature = picked;
+    if (branch) story.branch = branch;
+    const sha = this.deps.gitCommit.headSha(root);
+    for (const s of found.done)
+      story.steps[s] = {
+        ...emptyStep(),
+        status: 'done',
+        ...(sha ? { sha } : {}),
+        gate: { ok: true, reason: 'feito fora do autopiloto' },
+      };
+    this.progress(
+      `autopiloto: continuando ${picked} a partir do ${found.next} (${found.reasons.join('; ')})`,
+    );
+    if (git.isDirty(root))
+      this.progress(
+        'autopiloto: as alterações não commitadas ficam no disco e entram no commit do próximo passo.',
+      );
+    const base =
+      branch !== picked
+        ? (branch ?? 'main')
+        : (['main', 'master'].find((b) => git.branchExists(root, b)) ?? picked);
+    return {
+      run: {
+        version: 1,
+        id,
+        input: path.relative(root, file).split(path.sep).join('/'),
+        inputHash: sha256(text),
+        baseBranch: base,
+        status: 'active',
+        pid: this.pid,
+        startedAt: new Date(this.now()).toISOString(),
+        stories: [story],
+      },
+      stories,
+    };
+  }
+
+  private async execute(
+    root: string,
+    run: Run,
+    stories: Story[],
+    resuming: boolean,
+  ): Promise<AutopilotResult> {
+    const git = this.deps.git;
     const settings = this.ctl.settings.autopilot;
     const verifyCommands = settings.verify.command ?? defaultVerifyCommands(root);
     const specKit = this.ctl.specKit!;
@@ -333,20 +463,38 @@ export class AutopilotDriver {
     const ctx = (): FlowContext => ({ stories, settings, now: this.now(), specOnDisk });
     let step = start(run, ctx());
     const decider = this.makeDecider(() => step, stories, root);
+    const autoAsk = asAskUserHandler(
+      decider,
+      () => this.decisionContext(step, stories, root),
+      (d) => this.record(root, step.state.run.id, d),
+      (reason, detail) => {
+        this.askFailure = reason;
+        this.decisionFailed(root, step, reason, detail);
+      },
+    );
     const restore = this.ctl.runOverrides({
       approvalMode: 'auto',
       // A dropped connection never stops the run: the turn waits and retries (Esc cancels).
       networkRetries: Number.POSITIVE_INFINITY,
       confirm: async () => false, // only destructive commands ask in "auto"; they are refused (FR-005)
-      ask: asAskUserHandler(
-        decider,
-        () => this.decisionContext(step, stories, root),
-        (d) => this.record(root, step.state.run.id, d),
-        (reason, detail) => {
-          this.askFailure = reason;
-          this.decisionFailed(root, step, reason, detail);
-        },
-      ),
+      // Interactive: the question waits for the user first; the decider answers what is left.
+      ask: async (request) => {
+        const person = await this.askPerson(request);
+        if (person) {
+          request.questions.forEach((q, i) => {
+            const a = person.answers[i];
+            if (a)
+              this.record(
+                root,
+                step.state.run.id,
+                this.userDecision(step, q.question, answerText(a), toDecisionOptions(q.options)),
+              );
+          });
+          return person;
+        }
+        if (this.cancelled) return { answered: false };
+        return autoAsk(request);
+      },
       onToolResult: (_name, result) => this.skillEvent(root, step, result),
     });
     this.ctl.autopilotCancel = () => this.cancel();
@@ -497,6 +645,27 @@ export class AutopilotDriver {
         return out;
       }
       case 'decide': {
+        const person = await this.askPerson({
+          questions: [
+            {
+              question: next.question,
+              header: 'Autopiloto',
+              options: [
+                {
+                  label: AUTO_ANSWER_LABEL,
+                  description: 'O autopiloto escolhe a resposta, como faria sem você',
+                },
+              ],
+              multiSelect: false,
+            },
+          ],
+        });
+        const typed = person?.answers[0]?.kind === 'other' ? person.answers[0].text : undefined;
+        if (typed !== undefined) {
+          this.record(root, st.run.id, this.userDecision(step, next.question, typed));
+          return onAnswer(st, typed);
+        }
+        if (this.cancelled) return onCancelled(st);
         try {
           const d = await env.decider.text(
             this.decisionContext(step, env.stories, root),
@@ -644,6 +813,46 @@ export class AutopilotDriver {
       ...detail,
     });
     this.progress(decisionFailedProgress(st.step, detail?.question, reason));
+  }
+
+  /**
+   * Interactive run (`autopilot.questionTimeoutSeconds` > 0): shows the question in the dialog
+   * and waits for the user; undefined when the time runs out, on Esc or without a user (`-p`),
+   * so the decider answers it.
+   */
+  private async askPerson(
+    request: AskUserRequest,
+  ): Promise<Extract<AskUserOutcome, { answered: true }> | undefined> {
+    const seconds = this.ctl.settings.autopilot.questionTimeoutSeconds;
+    if (!this.ctl.interactive || seconds === 0 || this.cancelled) return undefined;
+    const r = await this.ctl.askUntil(request, seconds * 1000, this.abort.signal);
+    if (r === 'timeout')
+      this.progress(`autopiloto: sem resposta em ${seconds} s; o autopiloto decide.`);
+    return r !== 'timeout' && r.answered ? r : undefined;
+  }
+
+  /** A question the user answered in the dialog, recorded like a decision. */
+  private userDecision(
+    current: Step,
+    question: string,
+    choice: string,
+    options?: Decision['options'],
+  ): Decision {
+    const s = current.state;
+    return {
+      at: new Date(this.now()).toISOString(),
+      story: s.story + 1,
+      feature: s.run.stories[s.story]?.feature,
+      step: s.step,
+      kind: options ? 'options' : 'text',
+      question,
+      ...(options ? { options } : {}),
+      choice,
+      rationale: 'Respondida pelo usuário.',
+      by: 'user',
+      provider: 'usuário',
+      model: '',
+    };
   }
 
   private record(root: string, runId: string, d: Decision): void {

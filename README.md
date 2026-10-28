@@ -294,16 +294,30 @@ Códigos de saída: `0` sucesso · `1` erro do provedor (modo `-p`) · `2` uso/c
 
 ### Autopiloto
 
-O autopiloto pega um arquivo de histórias de usuário, ou um prompt, e leva cada história por todos os passos do Spec Kit, sem nenhuma interação: `specify → clarify → plan → tasks → analyze → implement → verificação`.
+O autopiloto pega um arquivo de histórias de usuário, ou um prompt, e leva cada história por todos os passos do Spec Kit, sem precisar de interação (as perguntas esperam você por um tempo e depois são respondidas sozinhas): `specify → clarify → plan → tasks → analyze → implement → verificação`.
 
 ```bash
 /autopilot historias.md              # na sessão interativa
 /autopilot crie um CRUD de clientes com nome e e-mail obrigatórios
 /autopilot --resume                  # retoma uma execução interrompida ou parada
 /autopilot --status                  # mostra o estado salvo
+/autopilot --continue [feature]      # continua uma feature começada fora do autopiloto
 maestro -p --autopilot historias.md  # sem terminal: progresso no stderr, relatório no stdout
 maestro -p "crie um CRUD de clientes" --autopilot
+maestro -p --autopilot 003 --continue
 ```
+
+**Continuar uma feature começada em outro lugar.** Rode, por exemplo, o specify, o clarify e o plan no Claude Code (ou à mão no Maestro), depois `/autopilot --continue` para o autopiloto fazer o resto. Ele descobre o ponto só pelos artefatos de `specs/NNN-nome/`:
+
+| O que existe                                                | Conta como feito    |
+| ----------------------------------------------------------- | ------------------- |
+| `spec.md` preenchido (o título não é mais `[FEATURE NAME]`) | specify             |
+| `## Clarifications` no `spec.md`, ou um `plan.md`           | clarify             |
+| `plan.md` preenchido                                        | plan                |
+| `tasks.md` com tarefas `- [ ] T001`                         | tasks               |
+| alguma tarefa marcada `[X]` / todas marcadas                | analyze / implement |
+
+A execução começa no primeiro passo que falta (o analyze, que não deixa artefato, roda antes de um implement que ainda não começou) e segue até o fim, com as mesmas regras de uma execução normal. Sem argumento, a feature é a ativa (`.specify/feature.json` ou a branch atual), senão a mais nova; `--continue 003` ou `--continue 003-clientes` escolhe uma. Uma feature que só existe na própria branch também conta: o autopiloto troca para ela. A árvore pode ter alterações não commitadas: elas ficam no disco e entram no commit do próximo passo. A história da execução vem do título do `spec.md` e do pedido original, salva em `.maestro/autopilot/<execução>.md`, e `/autopilot --resume` retoma como qualquer outra.
 
 **Com um prompt**, o texto vira uma história só, que começa pelo `/speckit.specify` desse texto e segue todo o processo. A primeira linha do prompt dá o título. O texto fica salvo em `.maestro/autopilot/<execução>.md`, que é local como o registro, e por isso `/autopilot --resume` retoma igual a um arquivo. O argumento conta como arquivo quando o arquivo existe ou quando é uma palavra só com `/` ou extensão (`historias.md`, `docs/hu`); nesse caso, um arquivo que não existe dá erro em vez de virar prompt.
 
@@ -322,7 +336,7 @@ Como usuário, quero bye(name) que devolve "Tchau, <name>!".
 Um arquivo sem títulos `##` conta como uma história só. O texto antes do primeiro `##` vale como contexto para todas. Se dois ou mais títulos `##` parecerem seções de um documento (`## Contexto`, `## Escopo`, `## Riscos`, `## Critérios de aceite`…), o autopiloto recusa começar: use `###` nas seções e `##` só no título de cada história.
 
 - **Cada história vira uma feature** com a própria branch `NNN-nome`. As histórias rodam em sequência, e cada branch parte da anterior. Cada passo começa numa conversa limpa, lê os artefatos do disco e usa a rota configurada para o comando em `/routes`. Cada passo concluído vira um commit (`fix: autopilot(012): plan`), então dá para desfazer passo a passo. O analyze só lê e não gera commit.
-- **Decisões automáticas.** As perguntas que os passos fariam a você vão para um decisor, que usa a rota `autopilot.decide` e por padrão segue `chat`. Isso inclui as clarificações, o "(yes/no)" do implement e qualquer pergunta deixada no fim de um turno. O decisor escolhe a opção recomendada, ou senão a que menos amplia escopo e risco, sempre com uma justificativa. Tudo fica em `specs/NNN-nome/decisions.md`, que é versionado, e em `.maestro/autopilot/<execução>.jsonl`, que é local. Cada pergunta também aparece na conversa (no `-p`, no stderr), com a resposta escolhida: `autopiloto: pergunta no clarify: …` seguido de `↳ resposta automática: … (recomendada) — <justificativa>`.
+- **Decisões automáticas.** As perguntas que os passos fariam a você vão para um decisor, que usa a rota `autopilot.decide` e por padrão segue `chat`. Isso inclui as clarificações, o "(yes/no)" do implement e qualquer pergunta deixada no fim de um turno. O decisor escolhe a opção recomendada, ou senão a que menos amplia escopo e risco, sempre com uma justificativa. Tudo fica em `specs/NNN-nome/decisions.md`, que é versionado, e em `.maestro/autopilot/<execução>.jsonl`, que é local. Cada pergunta também aparece na conversa (no `-p`, no stderr), com a resposta escolhida: `autopiloto: pergunta no clarify: …` seguido de `↳ resposta automática: … (recomendada) — <justificativa>`. Na sessão interativa, a pergunta abre primeiro na tela, com uma contagem regressiva: você pode responder (`↳ resposta do usuário: …`, registrada também no `decisions.md`) ou apertar Esc para o decisor responder na hora. Se ninguém responder em `autopilot.questionTimeoutSeconds` segundos (padrão 300), o decisor responde. Com `0` o decisor responde na hora, como no `-p`. Uma pergunta deixada em texto no fim de um turno vem com a opção "Deixar o autopiloto decidir" e com "Outro…" para a sua resposta.
 - **Portões entre os passos.**
   - specify, plan e tasks precisam criar o artefato.
   - Se o analyze apontar algo CRITICAL, há uma rodada de correção e uma nova análise.
@@ -337,6 +351,7 @@ Um arquivo sem títulos `##` conta como uma história só. O texto antes do prim
   "autopilot": {
     "verify": { "command": ["npm test", "npm run lint"], "maxAttempts": 3, "timeoutMs": 600000 },
     "limits": { "turns": 0, "minutes": 0, "tokens": 0 },
+    "questionTimeoutSeconds": 300,
     "commitPrefix": "fix:",
     "push": false,
     "merge": false

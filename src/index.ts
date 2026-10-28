@@ -170,6 +170,7 @@ async function main(argv: string[]): Promise<number> {
         controller,
         file: args.autopilot.trim() || undefined,
         resume: args.resume,
+        continue: args.continue,
       });
     }
     const { runNonInteractive } = await import('./cli/nonInteractive.js');

@@ -233,6 +233,8 @@ export function App({ controller, onExit, ui = DEFAULT_UI, flags, env, frame, co
           color={caps.color}
           onInput={onQuestionInput}
           rows={caps.rows}
+          deadline={snap.questionDeadline}
+          clock={snap.clock}
         />
       )}
       {snap.activity && !dialog && (

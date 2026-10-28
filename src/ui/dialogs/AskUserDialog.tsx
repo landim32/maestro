@@ -8,6 +8,7 @@
  * Modified for Maestro; see THIRD_PARTY_NOTICES.md.
  */
 
+import { useEffect, useState } from 'react';
 import { Box, Text } from 'ink';
 import { currentQuestion, isOtherSelected } from '../../setup/askUserFlow.js';
 import type { AskUserFlowState } from '../../setup/askUserFlow.js';
@@ -24,6 +25,24 @@ export interface AskUserDialogProps {
   onInput: (value: string) => void;
   /** Terminal rows; limits the visible option window. */
   rows?: number;
+  /** Autopilot: clock time at which the decider answers by itself (shows a countdown). */
+  deadline?: number;
+  clock?: () => number;
+}
+
+/** `4:59` until the autopilot answers; ticks on its own so the dialog does not re-render. */
+function Countdown({ deadline, clock }: { deadline: number; clock: () => number }) {
+  const [now, setNow] = useState(clock);
+  useEffect(() => {
+    const t = setInterval(() => setNow(clock()), 1000);
+    return () => clearInterval(t);
+  }, [clock]);
+  const s = Math.max(0, Math.ceil((deadline - now) / 1000));
+  return (
+    <Text dimColor>
+      Sem resposta, o autopiloto decide em {Math.floor(s / 60)}:{String(s % 60).padStart(2, '0')}
+    </Text>
+  );
 }
 
 /** Rows of the option list for the current question (contracts/ask-user.md § 3). */
@@ -38,7 +57,14 @@ export function askUserItems(flow: Extract<AskUserFlowState, { step: 'question' 
 }
 
 /** Multiple-choice question from the model, shown above the prompt like the confirmation box. */
-export function AskUserDialog({ flow, color, onInput, rows }: AskUserDialogProps) {
+export function AskUserDialog({
+  flow,
+  color,
+  onInput,
+  rows,
+  deadline,
+  clock = Date.now,
+}: AskUserDialogProps) {
   if (flow.step !== 'question') return null;
   const q = currentQuestion(flow);
   const other = isOtherSelected(flow);
@@ -49,7 +75,7 @@ export function AskUserDialog({ flow, color, onInput, rows }: AskUserDialogProps
     '1-9 escolher',
     ...(q.multiSelect ? ['Espaço marcar'] : []),
     'Enter confirmar',
-    'Esc cancelar',
+    deadline !== undefined ? 'Esc o autopiloto decide agora' : 'Esc cancelar',
   ].join(' · ');
 
   return (
@@ -88,7 +114,12 @@ export function AskUserDialog({ flow, color, onInput, rows }: AskUserDialogProps
         </Box>
       )}
       {flow.error && <Text color={c('red')}>✗ {flow.error}</Text>}
-      <Box marginTop={1}>
+      {deadline !== undefined && (
+        <Box marginTop={1}>
+          <Countdown deadline={deadline} clock={clock} />
+        </Box>
+      )}
+      <Box marginTop={deadline !== undefined ? 0 : 1}>
         <Text dimColor>{hints}</Text>
       </Box>
     </Box>

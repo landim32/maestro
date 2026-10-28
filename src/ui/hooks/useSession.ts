@@ -42,6 +42,8 @@ export function useSession(controller: SessionController) {
     transient: controller.transient,
     /** ask_user dialog state while awaiting_answer (contracts/ask-user.md). */
     question: controller.questionFlow,
+    /** Autopilot: when the decider answers the open question by itself (clock time). */
+    questionDeadline: s.pendingQuestion?.deadline,
     /** Slash commands (built-in + Spec Kit) for the prompt suggestions (specs/006). */
     commands,
     /** specs/007: live mouse state (/mouse) and whether image attachments are accepted. */

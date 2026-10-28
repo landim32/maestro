@@ -700,6 +700,43 @@ export class SessionController extends EventEmitter<ControllerEvents> {
       });
     });
 
+  /**
+   * Autopilot (specs/011): shows the ask_user dialog until the user answers, `timeoutMs` passes
+   * ('timeout') or `signal` aborts (not answered). Also works between turns: the session goes
+   * back to the state it had before the question.
+   */
+  askUntil(
+    request: AskUserRequest,
+    timeoutMs: number,
+    signal: AbortSignal,
+  ): Promise<AskUserOutcome | 'timeout'> {
+    if (signal.aborted) return Promise.resolve({ answered: false });
+    return new Promise((resolve) => {
+      const previous = this.session.state === 'idle' ? 'idle' : 'generating';
+      let done = false;
+      const finish = (r: AskUserOutcome | 'timeout') => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+        this.questionFlow = undefined;
+        this.session.pendingQuestion = undefined;
+        this.session.setState(previous);
+        resolve(r);
+      };
+      const onAbort = () => finish({ answered: false });
+      const timer = setTimeout(() => finish('timeout'), timeoutMs);
+      signal.addEventListener('abort', onAbort, { once: true });
+      this.questionFlow = initialAskUserFlow(request.questions);
+      this.session.pendingQuestion = {
+        request,
+        deadline: this.clock() + timeoutMs,
+        resolve: (outcome) => finish(outcome),
+      };
+      this.session.setState('awaiting_answer');
+    });
+  }
+
   /** Routes a dialog key to the ask_user reducer; done/cancelled resolve the pending question. */
   dispatchQuestion(key: AskUserKey): void {
     const pending = this.session.pendingQuestion;

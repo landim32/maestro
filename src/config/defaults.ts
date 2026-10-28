@@ -67,6 +67,8 @@ export const DEFAULTS = {
   autopilot: {
     verifyMaxAttempts: 3,
     verifyTimeoutMs: 600_000,
+    /** Interactive run: how long a question waits for the user before the decider answers. */
+    questionTimeoutSeconds: 300,
     /** Per-story caps; 0 = no limit (the autopilot never stops by itself, only at a failed gate). */
     turns: 0,
     minutes: 0,

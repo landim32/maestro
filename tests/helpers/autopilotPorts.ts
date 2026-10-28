@@ -67,6 +67,8 @@ export interface ScriptOptions {
   noClarifyQuestion?: boolean;
   /** load_skill inputs called at the start of a step's first round, before its usual script (specs/013). */
   skillCalls?: Partial<Record<string, unknown[]>>;
+  /** Feature already on disk (a run that continues it skips specify). */
+  feature?: string;
 }
 
 /**
@@ -76,7 +78,7 @@ export interface ScriptOptions {
  * always picks the recommended option / answers "yes".
  */
 export function speckitModel(opts: ScriptOptions = {}) {
-  let feature = '';
+  let feature = opts.feature ?? '';
   let analyzeTurn = 0;
   let implementRound = 0;
   const steps: string[] = [];

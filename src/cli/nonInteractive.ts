@@ -86,6 +86,8 @@ export interface AutopilotNonInteractiveOptions {
   controller: SessionController;
   file?: string;
   resume?: boolean;
+  /** --continue: `file` is the (optional) feature started outside the autopilot. */
+  continue?: boolean;
   stdout?: { write(s: string): unknown };
   stderr?: { write(s: string): unknown };
   handleSignals?: boolean;
@@ -116,7 +118,10 @@ export async function runAutopilotNonInteractive(
   const onSigint = () => driver.cancel();
   if (opts.handleSignals ?? true) process.once('SIGINT', onSigint);
   try {
-    const result = await driver.start(opts.file, { resume: opts.resume });
+    const result = await driver.start(opts.file, {
+      resume: opts.resume,
+      continue: opts.continue,
+    });
     flush();
     if (result.code === 2) {
       stderr.write(`maestro: ${result.report}\n`);

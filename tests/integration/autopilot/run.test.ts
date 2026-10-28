@@ -51,6 +51,7 @@ async function setup(
     verify?: number[];
     logFile?: string;
     tools?: ReturnType<typeof allTools>;
+    interactive?: boolean;
   } = {},
 ) {
   const model = speckitModel(script);
@@ -69,7 +70,7 @@ async function setup(
     ctx: makeCtx(extra.settings ?? {}),
     tools: extra.tools ?? allTools(),
     system: 'sys',
-    interactive: false,
+    interactive: extra.interactive ?? false,
     providerOverride: () => model.provider,
     specKit,
     logger: extra.logFile ? createLogger({ enabled: true, filePath: extra.logFile }) : undefined,
@@ -147,6 +148,52 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
     // overrides restored
     expect(controller.approvalMode).toBe('default');
     expect(controller.autopilotStatus).toBeUndefined();
+  });
+
+  it('interactive: questions wait for the user; Esc leaves the answer to the decider', async () => {
+    repo.write('historias.md', ONE);
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'stories');
+    const { controller, model, progress } = await setup(
+      {
+        implementQuestion:
+          'Some checklists have unchecked items. Do you want to proceed with implementation anyway? (yes/no)',
+      },
+      { interactive: true, settings: { autopilot: { questionTimeoutSeconds: 60 } } },
+    );
+    const headers: string[] = [];
+    controller.on('change', () => {
+      const flow = controller.questionFlow;
+      if (controller.session.state !== 'awaiting_answer' || flow?.step !== 'question') return;
+      const header = flow.questions[flow.index]!.header;
+      if (headers.at(-1) === header) return;
+      headers.push(header);
+      expect(controller.session.pendingQuestion?.deadline).toBeGreaterThan(controller.clock());
+      // the clarify question is answered by the user, the text question goes to the decider
+      queueMicrotask(() =>
+        controller.dispatchQuestion(
+          header === 'Formato' ? { type: 'digit', n: 2 } : { type: 'cancel' },
+        ),
+      );
+    });
+    const r = await controller.createAutopilot().start('historias.md');
+    expect(r.code).toBe(0);
+    expect(headers).toEqual(['Formato', 'Autopiloto']);
+    const decisions = repo.read(`specs/${model.feature()}/decisions.md`);
+    expect(decisions).toContain(
+      '**Escolha:** Bom dia, nome\n**Por quê:** Respondida pelo usuário.',
+    );
+    expect(decisions).toContain('_usuário_');
+    expect(progress).toContain(
+      'autopiloto: pergunta no clarify: Qual formato de saudação?\n  ↳ resposta do usuário: Bom dia, nome',
+    );
+    expect(
+      progress.some(
+        (l) => l.includes('pergunta no implement') && l.includes('resposta automática'),
+      ),
+    ).toBe(true);
+    expect(controller.session.state).toBe('idle');
+    expect(controller.session.pendingQuestion).toBeUndefined();
   });
 
   it('a prompt instead of a file: one story saved in the local run folder, resumable', async () => {
@@ -523,5 +570,74 @@ describe('autopilot end to end', { timeout: 120_000 }, () => {
       { event: 'skill.load', story: 1, feature, step: 'implement', skill: 'nao-existe', ok: false },
     ]);
     expect(text).not.toContain('CORPO-SENTINELA');
+  });
+});
+
+/** `/autopilot --continue`: a feature started outside the autopilot (by hand, in Claude Code). */
+describe('autopilot --continue', { timeout: 120_000 }, () => {
+  const F = '001-saudacao';
+  const SPEC = `# Feature Specification: Saudação
+
+**Input**: User description: "quero greet(name)"
+
+## Clarifications
+
+### Session 2026-10-27
+
+- Q: formato? → A: Olá, nome!
+`;
+
+  it('starts at the first step the artifacts do not show, on the feature branch', async () => {
+    const { controller, model, progress } = await setup({ feature: F });
+    repo.git('checkout', '-qb', F);
+    repo.write(`specs/${F}/spec.md`, SPEC);
+    repo.write(`specs/${F}/plan.md`, '# Implementation Plan: Saudação\n');
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'feito no claude');
+    repo.git('checkout', '-q', 'main');
+
+    const r = await controller.createAutopilot().start(undefined, { continue: true });
+    expect(r.code).toBe(0);
+    expect(model.steps.filter((s) => s !== 'round')).toEqual(['tasks', 'analyze', 'implement']);
+    expect(repo.branch()).toBe(F);
+    expect(log().slice(0, 3)).toEqual([
+      'fix: autopilot(001): implement',
+      'fix: autopilot(001): tasks',
+      'feito no claude',
+    ]);
+    const s = state().stories[0]!;
+    expect(s.feature).toBe(F);
+    expect(s.title).toBe('Saudação');
+    expect(s.steps.clarify.gate?.reason).toBe('feito fora do autopiloto');
+    expect(state().baseBranch).toBe('main');
+    expect(progress[0]).toContain(`autopiloto: continuando ${F} a partir do tasks`);
+    expect(repo.read(state().input)).toContain('Pedido original: quero greet(name)');
+  });
+
+  it('a named feature with tasks half done and uncommitted work continues the implement', async () => {
+    const { controller, model, progress } = await setup({ feature: F });
+    repo.git('checkout', '-qb', F);
+    repo.write(`specs/${F}/spec.md`, SPEC);
+    repo.write(`specs/${F}/plan.md`, '# Implementation Plan: Saudação\n');
+    repo.write(`specs/${F}/tasks.md`, '- [X] T001 a\n- [ ] T002 b\n- [ ] T003 c\n');
+    repo.git('add', '-A');
+    repo.git('-c', 'commit.gpgsign=false', 'commit', '-qm', 'feito no claude');
+    repo.write('greet.js', '// começado no claude\n');
+
+    const r = await controller.createAutopilot().start('1', { continue: true });
+    expect(r.code).toBe(0);
+    expect(model.steps.filter((s) => s !== 'round')).toEqual(['implement']);
+    expect(progress.some((l) => l.includes('ficam no disco e entram no commit'))).toBe(true);
+    expect(log()[0]).toBe('fix: autopilot(001): implement');
+  });
+
+  it('refuses a feature without a filled spec.md and an unknown feature', async () => {
+    const { controller } = await setup();
+    repo.write(`specs/${F}/spec.md`, '# Feature Specification: [FEATURE NAME]\n');
+    let r = await controller.createAutopilot().start(undefined, { continue: true });
+    expect(r.code).toBe(2);
+    expect(r.report).toMatch(/não tem spec\.md preenchido/);
+    r = await controller.createAutopilot().start('999', { continue: true });
+    expect(r.report).toMatch(/feature não encontrada em specs\/: 999/);
   });
 });
