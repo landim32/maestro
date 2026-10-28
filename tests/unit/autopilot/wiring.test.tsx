@@ -17,6 +17,7 @@ describe('settings.autopilot (data-model § 2)', () => {
     expect(s.autopilot).toEqual({
       verify: { maxAttempts: 3, timeoutMs: 600000 },
       limits: { turns: 0, minutes: 0, tokens: 0 },
+      questionTimeoutSeconds: 300,
       commitPrefix: 'fix:',
       push: false,
       merge: false,
@@ -28,6 +29,9 @@ describe('settings.autopilot (data-model § 2)', () => {
     expect(settingsSchema.safeParse({ autopilot: { merge: true, push: true } }).success).toBe(true);
     expect(settingsSchema.safeParse({ autopilot: { limits: { turns: 3 } } }).success).toBe(false);
     expect(settingsSchema.safeParse({ autopilot: { limits: { turns: 7 } } }).success).toBe(true);
+    expect(settingsSchema.safeParse({ autopilot: { questionTimeoutSeconds: -1 } }).success).toBe(
+      false,
+    );
     expect(settingsSchema.safeParse({ autopilot: { limits: { minutes: -1 } } }).success).toBe(
       false,
     );

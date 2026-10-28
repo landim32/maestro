@@ -20,7 +20,9 @@ export function decisionProgress(d: Decision): string {
   const why = oneLine(d.rationale);
   return [
     `autopiloto: pergunta no ${d.step}: ${oneLine(d.question)}`,
-    `  ↳ resposta automática: ${oneLine(choice)}${rec}${why ? ` — ${why}` : ''}`,
+    d.by === 'user'
+      ? `  ↳ resposta do usuário: ${oneLine(choice)}`
+      : `  ↳ resposta automática: ${oneLine(choice)}${rec}${why ? ` — ${why}` : ''}`,
   ].join('\n');
 }
 

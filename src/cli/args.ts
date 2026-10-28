@@ -17,6 +17,8 @@ export interface ParsedArgs {
   autopilot?: string;
   /** `--resume` with --autopilot: continue the interrupted or stopped run. */
   resume?: boolean;
+  /** `--continue` with --autopilot [feature]: continue a feature started outside the autopilot. */
+  continue?: boolean;
   config?: string;
   tools: boolean;
   color: boolean;
@@ -61,6 +63,11 @@ function build(argv: string[]) {
     .option('resume', {
       type: 'boolean',
       describe: 'With --autopilot: resume the interrupted or stopped run.',
+    })
+    .option('continue', {
+      type: 'boolean',
+      describe:
+        'With --autopilot [feature]: continue a Spec Kit feature started elsewhere, from the step its artifacts show.',
     })
     .option('config', { type: 'string', describe: 'Path to the global settings.json.' })
     .option('tools', {
@@ -130,6 +137,10 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
   let autopilot = parsed.autopilot as string | undefined;
   if (parsed.resume && autopilot === undefined)
     throw new UsageError('--resume só vale com --autopilot <arquivo>.');
+  if (parsed.continue && autopilot === undefined)
+    throw new UsageError('--continue só vale com --autopilot [feature].');
+  if (parsed.continue && parsed.resume)
+    throw new UsageError('Use --continue ou --resume, não os dois.');
   if (autopilot !== undefined) {
     const prompt = parsed.prompt?.trim() ?? '';
     // `-p "texto" --autopilot`: the prompt is the autopilot's input (one story).
@@ -144,7 +155,7 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
       throw new UsageError(
         '--autopilot não pode ser combinado com --route (cada passo usa a sua rota).',
       );
-    if (autopilot.trim() === '' && !parsed.resume)
+    if (autopilot.trim() === '' && !parsed.resume && !parsed.continue)
       throw new UsageError('--autopilot precisa do arquivo de histórias ou de um prompt.');
   } else if (parsed.prompt !== undefined && parsed.prompt !== '-' && parsed.prompt.trim() === '') {
     throw new UsageError('--prompt must not be empty.');
@@ -157,6 +168,7 @@ export async function parseArgs(argv: string[]): Promise<ParsedArgs> {
     route: parsed.route,
     autopilot,
     resume: parsed.resume || undefined,
+    continue: parsed.continue || undefined,
     config: parsed.config,
     tools: parsed.tools,
     color: parsed.color,

@@ -172,6 +172,15 @@ export const autopilotSettingsSchema = z
         tokens: z.number().int().min(0).default(0),
       })
       .prefault({}),
+    /**
+     * Interactive run: seconds a question stays on screen for the user before the decider answers
+     * it; 0 = the decider answers at once (as in `-p`, where there is no user).
+     */
+    questionTimeoutSeconds: z
+      .number()
+      .int()
+      .min(0)
+      .default(DEFAULTS.autopilot.questionTimeoutSeconds),
     commitPrefix: z.enum(['fix:', 'feat:']).default('fix:'),
     /** Push the branch and open a PR after each story (never by default). */
     push: z.boolean().default(false),

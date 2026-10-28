@@ -109,5 +109,7 @@ export interface PendingToolAction {
 /** A pending `ask_user` question set waiting for the UI (data-model § 5). */
 export interface PendingQuestion {
   request: AskUserRequest;
+  /** Autopilot (specs/011): clock time at which the decider answers if the user has not. */
+  deadline?: number;
   resolve: (outcome: AskUserOutcome) => void;
 }

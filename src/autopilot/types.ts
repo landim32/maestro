@@ -95,6 +95,8 @@ export interface Decision {
   choice: string | string[];
   rationale: string;
   followedRecommendation?: boolean;
+  /** 'user': answered in the dialog during an interactive run (no decider involved). */
+  by?: 'user';
   provider: string;
   model: string;
 }
